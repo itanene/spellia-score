@@ -120,7 +120,8 @@
           3. ホストが対戦を始めると、時計回りに「めくる人」が回る<br>
           4. めくる人は、カードをめくるたびに「めくったカード」と「持ち主」を選んで確定。点数はアプリが自動で計算して、全員の画面にその場で出る<br>
           5. 「禁術」は最後にまとめて発動。「天秤」がめくられずに残ったら、ターンの終わりに持ち主を選んでね<br>
-          6. ログにはターンごとの点数の動きだけが残る（カードの名前は残らないよ）<br>
+          6. ログにはターンごとの点数の動きだけが残る（カードの名前は残らないよ）。今のターンの間だけは、めくったカードの一覧が点数の上に見える<br>
+          7. 置くカードは1人1枚だから、同じ人のカードは1ターンに1枚まで。めくれるのは自分以外の人数分まで<br>
           7. ARタブでは、タブを閉じずにカードのARエフェクトが見られる
         </div>
       </details>
@@ -154,6 +155,7 @@
 
     <div id="view-score">
       <p class="turn-banner" id="turn-banner"></p>
+      <div id="turn-history"></div>
       <div id="scoreboard"></div>
       <div id="flipper-panel"></div>
       <div class="panel hidden" id="host-tools">
@@ -206,17 +208,19 @@
 <script>
 /*CORE-START*/
 /* ===== SPELLIA スコア計算コア（ブラウザ版の効果判定と同一仕様） ===== */
+/* めくったカードは必ず誰かの置いたカードなので、入力では全カードで持ち主を選ぶ。
+   効果が持ち主を使わないカードでは、computeFlip 側で owner を無視する。 */
 const CARD_DEFS = {
-  maseki:    { name:"魔石",   icon:"🔷", text:"めくった人 +3",            needsOwner:false, art:"" },
-  bousou:    { name:"暴走",   icon:"🔥", text:"めくった人 +1、めくり終了", needsOwner:false, art:"" },
-  akugi:     { name:"悪戯",   icon:"🦊", text:"めくった人は持ち主に2P渡す", needsOwner:true,  art:"" },
-  shukufuku: { name:"祝福",   icon:"🕊️", text:"1位が全員に1Pずつ渡す",     needsOwner:false, art:"" },
-  shuseki:   { name:"主席",   icon:"🦅", text:"持ち主からもらう（持ち主が1位なら3P、ちがうなら1P）", needsOwner:true, art:"" },
-  tsukaima:  { name:"使い魔", icon:"🐈‍⬛", text:"めくった人と持ち主が +2ずつ", needsOwner:true, art:"" },
-  kinjutsu:  { name:"禁術",   icon:"🐉", text:"最後に発動。そのターンまだ増えてなければ+4、増えてたら-1", needsOwner:false, art:"" },
-  tenbin:    { name:"天秤",   icon:"⚖️", text:"持ち主から2Pもらう",         needsOwner:true,  art:"" },
-  kago:      { name:"加護",   icon:"🦌", text:"最下位 +2（同率なら全員+1）", needsOwner:false, art:"" },
-  yakusai:   { name:"厄災",   icon:"🐦‍⬛", text:"めくった人は全員に1Pずつ渡す", needsOwner:false, art:"" },
+  maseki:    { name:"魔石",   icon:"🔷", text:"めくった人 +3",            art:"" },
+  bousou:    { name:"暴走",   icon:"🔥", text:"めくった人 +1、めくり終了", art:"" },
+  akugi:     { name:"悪戯",   icon:"🦊", text:"めくった人は持ち主に2P渡す", art:"" },
+  shukufuku: { name:"祝福",   icon:"🕊️", text:"1位が全員に1Pずつ渡す",     art:"" },
+  shuseki:   { name:"主席",   icon:"🦅", text:"持ち主からもらう（持ち主が1位なら3P、ちがうなら1P）", art:"" },
+  tsukaima:  { name:"使い魔", icon:"🐈‍⬛", text:"めくった人と持ち主が +2ずつ", art:"" },
+  kinjutsu:  { name:"禁術",   icon:"🐉", text:"最後に発動。そのターンまだ増えてなければ+4、増えてたら-1", art:"" },
+  tenbin:    { name:"天秤",   icon:"⚖️", text:"持ち主から2Pもらう",         art:"" },
+  kago:      { name:"加護",   icon:"🦌", text:"最下位 +2（同率なら全員+1）", art:"" },
+  yakusai:   { name:"厄災",   icon:"🐦‍⬛", text:"めくった人は全員に1Pずつ渡す", art:"" },
 };
 const CARD_ORDER = ["maseki","bousou","akugi","shukufuku","shuseki","tsukaima","kinjutsu","tenbin","kago","yakusai"];
 const PLAYER_COLORS = [
@@ -233,6 +237,7 @@ function newScoreState(players){ /* players: [{name,color}] */
     players: players.map((p,i)=>({ id:i, name:p.name, color:p.color, score:0, online:true })),
     turn: 1, flipper: 0,
     gained: false, pendingKinjutsu: 0, canFlip: true,
+    turnFlips: [],   /* このターンにめくった {card, owner} の並び（ターンが終わると消える。ログには残さない） */
     turnChanges: {}, log: [], over: false, seq: 0,
   };
 }
@@ -270,6 +275,7 @@ function computeFlip(st, card, owner){
 }
 /* めくり1回を確定する */
 function applyFlip(st, card, owner){
+  st.turnFlips.push({ card, owner });
   if (card === "kinjutsu"){ st.pendingKinjutsu++; st.seq++; return { pending:true, deltas:{} }; }
   const { deltas } = computeFlip(st, card, owner);
   const before = st.players[st.flipper].score;
@@ -279,6 +285,16 @@ function applyFlip(st, card, owner){
   st.seq++;
   return { pending:false, deltas };
 }
+/* このターンにもう1枚めくれるか。できない理由を返す（null = めくれる）
+   実物のルール：置くのは1人1枚だけなので、同じ相手のカードは1ターンに1枚まで。
+   めくれる総数も「自分以外の人数」まで。 */
+function flipProblem(st, owner){
+  if (!st.canFlip) return "stop";                                   /* 暴走で終了 */
+  if (st.turnFlips.length >= st.players.length - 1) return "cap";   /* 全員分めくり終わった */
+  if (owner !== null && owner !== undefined && st.turnFlips.some(f => f.owner === owner)) return "already";
+  return null;
+}
+function flippedOwners(st){ return new Set(st.turnFlips.map(f => f.owner)); }
 /* ターン終了の解決プレビュー（禁術→天秤の順。状態は変えない） */
 function computeSettle(st, tenbinOwners){
   const F = st.flipper, deltas = {};
@@ -293,7 +309,7 @@ function settleTurn(st, tenbinOwners){
   const { deltas } = computeSettle(st, tenbinOwners);
   _applyDeltas(st, deltas);
   st.log.push({ turn: st.turn, flipper: st.flipper, changes: { ...st.turnChanges } });
-  st.turnChanges = {}; st.pendingKinjutsu = 0; st.gained = false; st.canFlip = true;
+  st.turnChanges = {}; st.turnFlips = []; st.pendingKinjutsu = 0; st.gained = false; st.canFlip = true;
   st.flipper = (st.flipper + 1) % st.players.length;
   st.turn++; st.seq++;
   return deltas;
@@ -427,12 +443,16 @@ function hostAct(seat, msg){
   if (msg.kind === "end"){ if (isHostSeat){ st.over = true; st.seq++; broadcastState({}); renderGame(); } return; }
   if (!isFlipper && !isHostSeat) return;
   if (msg.kind === "flip"){
-    if (!st.canFlip) return;
-    const r = applyFlip(st, msg.card, msg.owner);
+    const owner = msg.owner;
+    if (!CARD_DEFS[msg.card]) return;
+    if (typeof owner !== "number" || owner === st.flipper || !st.players[owner]) return;
+    if (flipProblem(st, owner)) return;
+    const r = applyFlip(st, msg.card, owner);
     broadcastState(r.deltas); renderGame();
   }
   else if (msg.kind === "settle"){
-    const owners = Array.isArray(msg.tenbinOwners) ? msg.tenbinOwners.filter(o => o !== st.flipper) : [];
+    const flipped = flippedOwners(st);
+    const owners = Array.isArray(msg.tenbinOwners) ? msg.tenbinOwners.filter(o => o !== st.flipper && !flipped.has(o)) : [];
     const r = settleTurn(st, owners);
     broadcastState(r); renderGame();
   }
@@ -444,7 +464,7 @@ function hostAct(seat, msg){
 function snapshot(){
   return { players: st.players, turn: st.turn, flipper: st.flipper, gained: st.gained,
     pendingKinjutsu: st.pendingKinjutsu, canFlip: st.canFlip, turnChanges: st.turnChanges,
-    log: st.log, over: st.over, seq: st.seq };
+    turnFlips: st.turnFlips, log: st.log, over: st.over, seq: st.seq };
 }
 function broadcastState(flash){
   const data = { t:"state", snap: snapshot(), flash: flash || {} };
@@ -567,6 +587,15 @@ function renderGame(flash){
     }
   }
   lastSeq = st.seq;
+  const th = $("turn-history");
+  if (st.turnFlips && st.turnFlips.length){
+    th.innerHTML = `<div class="panel" style="padding:9px 12px; margin-top:8px"><span class="mini">このターンのめくり（最後が一枚前）：</span><br>` +
+      st.turnFlips.map((f, i) => {
+        const o = st.players[f.owner], d = CARD_DEFS[f.card];
+        const inner = `${d ? d.name : f.card}（<span style="color:${o ? colorOf(o.color).hex : "#fff"}">●</span>${o ? esc(o.name) : "?"}）`;
+        return i === st.turnFlips.length - 1 ? `<b style="color:var(--cream)">${inner}</b>` : `<span style="color:var(--dim)">${inner}</span>`;
+      }).join(" → ") + `</div>`;
+  } else th.innerHTML = "";
   renderPanel();
   renderLog();
   $("host-tools").classList.toggle("hidden", mode !== "host" || st.over);
@@ -580,22 +609,28 @@ function renderPanel(){
     el.innerHTML = `<div class="panel"><p class="mini" style="text-align:center">いまは ${esc(F.name)} が入力する番だよ。<br>点数が変わると、ここにすぐ出るよ。</p></div>`;
     return;
   }
+  if (selOwner !== null && flippedOwners(st).has(selOwner)) selOwner = null;
   let h = `<div class="panel"><h3 style="margin:0 0 4px; color:var(--gold); font-size:15px">めくったカードを選んでね</h3>`;
   if (st.gained) h += `<p class="mini">このターン、あなたはもうポイントが増えています（禁術は −1 になります）。</p>`;
-  if (!st.canFlip){
+  const prob = flipProblem(st, null);
+  if (prob === "stop"){
     h += `<p class="mini">暴走で、このターンのめくりは終わりです。</p>`;
+  } else if (prob === "cap"){
+    h += `<p class="mini">全員分のカードをめくり終わりました。</p>`;
   } else {
     h += `<div class="card-grid">` + CARD_ORDER.map(k => {
       const d = CARD_DEFS[k];
       const art = d.art ? `<img src="${d.art}" alt="">` : `<span class="ic">${d.icon}</span>`;
       return `<button type="button" class="card-btn ${selCard===k?"sel":""}" data-card="${k}">${art}<span><span class="nm">${d.name}</span><br><span class="tx">${d.text}</span></span></button>`;
     }).join("") + `</div>`;
-    if (selCard && CARD_DEFS[selCard].needsOwner){
-      h += `<p class="mini" style="margin-top:10px">持ち主はだれ？</p><div class="owner-chips">` +
-        st.players.filter(p => p.id !== st.flipper).map(p =>
-          `<button type="button" class="owner-chip ${selOwner===p.id?"sel":""}" data-owner="${p.id}"><span style="color:${colorOf(p.color).hex}">●</span> ${esc(p.name)}</button>`).join("") + `</div>`;
+    if (selCard){
+      const flipped = flippedOwners(st);
+      h += `<p class="mini" style="margin-top:10px">持ち主はだれ？（めくり済みの人は選べません）</p><div class="owner-chips">` +
+        st.players.filter(p => p.id !== st.flipper).map(p => flipped.has(p.id)
+          ? `<button type="button" class="owner-chip" disabled style="opacity:.35"><span style="color:${colorOf(p.color).hex}">●</span> ${esc(p.name)}（めくり済み）</button>`
+          : `<button type="button" class="owner-chip ${selOwner===p.id?"sel":""}" data-owner="${p.id}"><span style="color:${colorOf(p.color).hex}">●</span> ${esc(p.name)}</button>`).join("") + `</div>`;
     }
-    if (selCard && (!CARD_DEFS[selCard].needsOwner || selOwner !== null)){
+    if (selCard && selOwner !== null){
       const pv = selCard === "kinjutsu"
         ? `<b>禁術</b> はターンの最後にまとめて発動します（いまは保留に入ります）`
         : deltaHTML(st, computeFlip(st, selCard, selOwner).deltas) || "変動なし";
@@ -644,8 +679,10 @@ function renderSettle(){
   $("settle-kinjutsu").innerHTML = st.pendingKinjutsu
     ? `<p style="font-size:15px; line-height:1.7">禁術 ×${st.pendingKinjutsu}：${esc(F.name)} はこのターン ${st.gained ? "もうポイントが増えているので <b class='minus'>−1</b> ずつ" : "まだポイントが増えていないので <b class='plus'>+4</b> ずつ"} になります。</p>`
     : `<p class="mini">禁術の保留はありません。</p>`;
-  $("settle-tenbin").innerHTML = st.players.filter(p => p.id !== st.flipper).map(p =>
-    `<button type="button" class="owner-chip ${settleTenbin.has(p.id)?"sel":""}" data-tb="${p.id}"><span style="color:${colorOf(p.color).hex}">●</span> ${esc(p.name)}</button>`).join("");
+  const tbCandidates = st.players.filter(p => p.id !== st.flipper && !flippedOwners(st).has(p.id));
+  $("settle-tenbin").innerHTML = tbCandidates.length ? tbCandidates.map(p =>
+    `<button type="button" class="owner-chip ${settleTenbin.has(p.id)?"sel":""}" data-tb="${p.id}"><span style="color:${colorOf(p.color).hex}">●</span> ${esc(p.name)}</button>`).join("")
+    : `<span class="mini">全員のカードがめくられたので、天秤の確認はありません。</span>`;
   for (const b of $("settle-tenbin").querySelectorAll("[data-tb]")) b.onclick = () => {
     const id = Number(b.dataset.tb);
     settleTenbin.has(id) ? settleTenbin.delete(id) : settleTenbin.add(id);
