@@ -118,13 +118,13 @@
         <div class="rule-list">
           1. ホストが「部屋を作る」→ 出てきた4文字のコードをみんなに伝える<br>
           2. みんなはコードを入れて「部屋に入る」。名前と自分の色を選んでね<br>
-          3. ホストが対戦を始めると、時計回りに「めくる人」が回る<br>
+          3. ロビーで、当日の座席どおり（時計回り）に↑↓で並び替えてね。一番上が最初のめくる人。ホストが対戦を始めると、その順で「めくる人」が回る<br>
           4. めくる人は、カードをめくるたびに「めくったカード」と「持ち主」を選んで確定。点数はアプリが自動で計算して、全員の画面にその場で出る<br>
           5. 「禁術」は最後にまとめて発動。「天秤」がめくられずに残ったら、ターンの終わりに持ち主を選んでね<br>
           6. ログにはターンごとの点数の動きだけが残る（カードの名前は残らないよ）。今のターンの間だけは、めくったカードの一覧が点数の上に見える<br>
           7. 置くカードは1人1枚だから、同じ人のカードは1ターンに1枚まで。めくれるのは自分以外の人数分まで<br>
           8. ARタブでは、タブを閉じずにカードのARエフェクトが見られる<br>
-          9. 対戦を終わらせると、勝者と「誰が誰のカードを何枚めくったか」の記録が全員に見られる（試合中は見られないよ）
+          9. 試合は、全員の手札がなくなるターン（人数で決まっています）で自動で終わり、勝者と「誰が誰のカードを何枚めくったか」の記録が全員に見られる（試合中は見られないよ）
         </div>
       </details>
     </div>
@@ -160,13 +160,9 @@
       <div id="turn-history"></div>
       <div id="scoreboard"></div>
       <div id="flipper-panel"></div>
-      <div class="panel hidden" id="local-tools">
-        <button class="btn danger" id="btn-end-local" style="margin:0">対戦を終わらせる（結果発表）</button>
-      </div>
       <div class="panel hidden" id="host-tools">
         <h3 style="margin:0 0 6px; color:var(--gold); font-size:14px">ホスト用</h3>
         <button class="btn sub" id="btn-host-input" style="margin:4px 0">めくる人の代わりに入力する</button>
-        <button class="btn danger" id="btn-end-game" style="margin:4px 0">対戦を終わらせる（結果発表）</button>
       </div>
     </div>
 
@@ -239,10 +235,13 @@ const PLAYER_COLORS = [
   { key:"shiro",   name:"しろ",     hex:"#e8e4da" },
 ];
 
-function newScoreState(players){ /* players: [{name,color}] */
+function newScoreState(players){ /* players: [{name,color}]（並び順＝めくり順） */
+  const n = players.length;
+  const deck = n === 6 ? 10 : 12;   /* 6人の時だけ10枚デッキ */
   return {
     players: players.map((p,i)=>({ id:i, name:p.name, color:p.color, score:0, online:true })),
     turn: 1, flipper: 0,
+    totalTurns: Math.round(deck * n / (n - 1)),   /* 全員の手札がなくなるターン数（3人18/4人16/5人15/6人12） */
     gained: false, pendingKinjutsu: 0, canFlip: true,
     turnFlips: [],   /* このターンにめくった {card, owner} の並び（ターンが終わると消える。ログには残さない） */
     stats: { byOwner: {}, byCard: {} },   /* 試合全体のめくり集計。終了時にだけ公開する */
@@ -324,8 +323,9 @@ function settleTurn(st, tenbinOwners){
   _applyDeltas(st, deltas);
   st.log.push({ turn: st.turn, flipper: st.flipper, changes: { ...st.turnChanges } });
   st.turnChanges = {}; st.turnFlips = []; st.pendingKinjutsu = 0; st.gained = false; st.canFlip = true;
-  st.flipper = (st.flipper + 1) % st.players.length;
-  st.turn++; st.seq++;
+  if (st.turn >= st.totalTurns){ st.over = true; }   /* 全員の手札がなくなったら自動で終了 */
+  else { st.flipper = (st.flipper + 1) % st.players.length; st.turn++; }
+  st.seq++;
   return deltas;
 }
 /* 手動の点数修正（ミスの直し用。gained には影響しない） */
@@ -349,7 +349,7 @@ function standings(st){
 <script>
 /* ===== UI / ネットワーク / AR ===== */
 const $ = id => document.getElementById(id);
-const APP_VOL = "Vol.2";
+const APP_VOL = "Vol.3";
 const NET_PREFIX = "spellia-score-v1-";
 const NET_OPTS = { config: { iceServers: [
   { urls: "stun:stun.l.google.com:19302" },
@@ -364,8 +364,8 @@ const esc = s => String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">"
 
 let mode = "title";           // title | host | guest | local
 let peer = null, hostConn = null;
-let conns = {};               // host: seat -> conn
-let lobby = [];               // host: [{name,color}]
+let seatConns = [];           // host/local: 席順に並んだ接続（ホストとダミーは null）
+let lobby = [];               // host/local: [{name,color}]（並び順＝めくり順）
 let mySeat = -1, roomCode = "";
 let st = null;                // host/local: 実体 / guest: スナップショット
 let lastSeq = -1, hostOverride = false;
@@ -397,19 +397,17 @@ function startHost(){
   peer = new Peer(NET_PREFIX + roomCode, NET_OPTS);
   peer.on("open", () => {
     mode = "host"; mySeat = 0;
-    lobby = [{ name: myName, color: myColor }];
-    conns = {};
+    lobby = [{ name: myName, color: myColor, host: true }];
+    seatConns = [null];
     show("scr-lobby"); renderLobby();
   });
   peer.on("connection", conn => {
     conn.on("data", msg => onHostData(conn, msg));
     conn.on("close", () => {
-      const seat = Number(Object.keys(conns).find(k => conns[k] === conn));
-      if (!Number.isNaN(seat)){
-        delete conns[seat];
-        if (st && st.players[seat]){ st.players[seat].online = false; broadcastState({}); }
-        else { lobby.splice(seat, 1); reassignSeats(); broadcastLobby(); renderLobby(); }
-      }
+      const seat = seatConns.indexOf(conn);
+      if (seat < 0) return;
+      if (st && st.players[seat]){ st.players[seat].online = false; seatConns[seat] = null; broadcastState({}); }
+      else { lobby.splice(seat, 1); seatConns.splice(seat, 1); renumberGuests(); broadcastLobby(); renderLobby(); }
     });
   });
   peer.on("error", e => {
@@ -417,12 +415,8 @@ function startHost(){
     else titleMsg("接続で問題が起きたよ：" + e.type);
   });
 }
-function reassignSeats(){
-  const map = {};
-  lobby.forEach((p, i) => { if (conns[p.seat] !== undefined) map[i] = conns[p.seat]; });
-  const nc = {};
-  lobby.forEach((p, i) => { if (map[i]) nc[i] = map[i]; p.seat = i; });
-  conns = nc;
+function renumberGuests(){
+  seatConns.forEach((c, i) => { if (c) try{ c.send({ t:"welcome", seat: i, color: lobby[i].color }); }catch(_){} });
 }
 function onHostData(conn, msg){
   if (!msg || typeof msg !== "object") return;
@@ -431,22 +425,25 @@ function onHostData(conn, msg){
     if (lobby.length >= 6){ try{ conn.send({ t:"closed", reason:"部屋がいっぱいです" }); }catch(_){} return; }
     let color = msg.color;
     if (lobby.some(p => p.color === color)) color = (PLAYER_COLORS.find(c => !lobby.some(p => p.color === c.key)) || PLAYER_COLORS[0]).key;
-    const seat = lobby.length;
-    lobby.push({ name: String(msg.name || "プレイヤー").slice(0, 10), color, seat });
-    conns[seat] = conn;
+    lobby.push({ name: String(msg.name || "プレイヤー").slice(0, 10), color });
+    seatConns.push(conn);
+    const seat = lobby.length - 1;
     conn.send({ t:"welcome", seat, color });
     broadcastLobby(); renderLobby();
   }
   else if (msg.t === "act"){
-    const seat = Number(Object.keys(conns).find(k => conns[k] === conn));
-    if (!Number.isNaN(seat)) hostAct(seat, msg);
+    const seat = seatConns.indexOf(conn);
+    if (seat >= 0) hostAct(seat, msg);
   }
 }
 function broadcastLobby(){
-  const data = { t:"lobby", players: lobby.map(p => ({ name:p.name, color:p.color })) };
-  for (const k of Object.keys(conns)) try{ conns[k].send(data); }catch(_){}
+  const data = { t:"lobby", players: lobby.map(p => ({ name:p.name, color:p.color, host: !!p.host })) };
+  for (const c of seatConns) if (c) try{ c.send(data); }catch(_){}
 }
+let hostSeat = 0;
 function hostStartGame(){
+  hostSeat = Math.max(0, lobby.findIndex(p => p.host));
+  mySeat = hostSeat;
   st = newScoreState(lobby.map(p => ({ name:p.name, color:p.color })));
   broadcastState({});
   show("scr-game"); renderGame();
@@ -454,8 +451,7 @@ function hostStartGame(){
 function hostAct(seat, msg){
   if (!st || st.over) return;
   const isFlipper = seat === st.flipper;
-  const isHostSeat = seat === 0;
-  if (msg.kind === "end"){ if (isHostSeat){ st.over = true; st.seq++; broadcastState({}); renderGame(); } return; }
+  const isHostSeat = seat === hostSeat;
   if (!isFlipper && !isHostSeat) return;
   if (msg.kind === "flip"){
     const owner = msg.owner;
@@ -477,14 +473,14 @@ function hostAct(seat, msg){
   }
 }
 function snapshot(){
-  return { players: st.players, turn: st.turn, flipper: st.flipper, gained: st.gained,
+  return { players: st.players, turn: st.turn, totalTurns: st.totalTurns, flipper: st.flipper, gained: st.gained,
     pendingKinjutsu: st.pendingKinjutsu, canFlip: st.canFlip, turnChanges: st.turnChanges,
     turnFlips: st.turnFlips, log: st.log, over: st.over, seq: st.seq,
     ...(st.over ? { stats: st.stats } : {}) };
 }
 function broadcastState(flash){
   const data = { t:"state", snap: snapshot(), flash: flash || {} };
-  for (const k of Object.keys(conns)) try{ conns[k].send(data); }catch(_){}
+  for (const c of seatConns) if (c) try{ c.send(data); }catch(_){}
 }
 
 /* ---------- guest ---------- */
@@ -523,15 +519,18 @@ function sendAct(msg){
 function startLocal(){
   readProfile();
   mode = "local"; mySeat = -1; roomCode = "";
-  const dummies = ["ルナ","セト","ミオ","アストラ","ノア"];
-  const n = 4;
-  const players = [{ name: myName, color: myColor }];
+  const dummies = ["ルナ","セト","ミオ"];
+  lobby = [{ name: myName, color: myColor, me: true }];
   const used = new Set([myColor]);
-  for (let i = 0; i < n - 1; i++){
+  for (let i = 0; i < 3; i++){
     const c = PLAYER_COLORS.find(c => !used.has(c.key)); used.add(c.key);
-    players.push({ name: dummies[i], color: c.key });
+    lobby.push({ name: dummies[i], color: c.key });
   }
-  st = newScoreState(players);
+  seatConns = [null, null, null, null];
+  show("scr-lobby"); renderLobby();
+}
+function localStartGame(){
+  st = newScoreState(lobby.map(p => ({ name:p.name, color:p.color })));
   show("scr-game"); renderGame();
 }
 
@@ -540,15 +539,34 @@ function playerRows(list){
   return list.map((p, i) => {
     const c = colorOf(p.color);
     return `<div class="sb-row"><span class="dot" style="background:${c.hex}"></span>
-      <span class="sb-name">${esc(p.name)} ${i===0?'<span class="tag">ホスト</span>':''}</span>
+      <span class="sb-name">${i+1}. ${esc(p.name)} ${p.host?'<span class="tag">ホスト</span>':''}</span>
       <span class="mini">${c.name}</span></div>`;
   }).join("");
 }
 function renderLobby(){
-  $("lobby-code").textContent = roomCode;
-  $("lobby-players").innerHTML = playerRows(lobby);
-  $("lobby-status").textContent = "友達に部屋コードを伝えてね。2人から始められます（本番は3〜6人）。";
+  $("lobby-code").textContent = mode === "local" ? "お試し" : roomCode;
+  $("lobby-players").innerHTML = lobby.map((p, i) => {
+    const c = colorOf(p.color);
+    return `<div class="sb-row"><span class="mini" style="min-width:16px">${i+1}</span><span class="dot" style="background:${c.hex}"></span>
+      <span class="sb-name">${esc(p.name)} ${p.host?'<span class="tag">ホスト</span>':''} ${p.me?'<span class="tag">あなた</span>':''}</span>
+      <span class="mini">${c.name}</span>
+      <button class="btn sub" data-move="${i}|-1" style="margin:0; padding:5px 10px; width:auto; flex:none" ${i===0?"disabled":""}>↑</button>
+      <button class="btn sub" data-move="${i}|1" style="margin:0; padding:5px 10px; width:auto; flex:none" ${i===lobby.length-1?"disabled":""}>↓</button></div>`;
+  }).join("");
+  for (const b of $("lobby-players").querySelectorAll("[data-move]"))
+    b.onclick = () => { const [i, d] = b.dataset.move.split("|").map(Number); moveLobby(i, d); };
+  $("lobby-status").textContent = mode === "local"
+    ? "↑↓で座席どおり（時計回り）に並び替えてね。一番上が最初のめくる人だよ。"
+    : "友達に部屋コードを伝えてね。↑↓で当日の座席どおり（時計回り）に並び替えてね。一番上が最初のめくる人。2人から始められます（本番は3〜6人）。";
   $("btn-start").classList.toggle("hidden", lobby.length < 2);
+}
+function moveLobby(i, d){
+  const j = i + d;
+  if (j < 0 || j >= lobby.length) return;
+  [lobby[i], lobby[j]] = [lobby[j], lobby[i]];
+  [seatConns[i], seatConns[j]] = [seatConns[j], seatConns[i]];
+  if (mode === "host"){ renumberGuests(); broadcastLobby(); }
+  renderLobby();
 }
 function renderLobbyGuest(){
   $("lobby-code").textContent = roomCode;
@@ -577,7 +595,7 @@ function renderGame(flash){
   const sd = standings(st);
   const F = st.players[st.flipper];
   $("turn-banner").innerHTML =
-    `ターン ${st.turn}　<b>${esc(F.name)}</b> のめくり番` +
+    `ターン ${st.turn} / ${st.totalTurns || "?"}　<b>${esc(F.name)}</b> のめくり番` +
     (st.pendingKinjutsu ? `<span class="badge">禁術 ×${st.pendingKinjutsu} 保留中</span>` : "") +
     (st.over ? "　<b>対戦終了</b>" : "");
   $("scoreboard").innerHTML = st.players.map(p => {
@@ -615,7 +633,6 @@ function renderGame(flash){
   renderPanel();
   renderLog();
   $("host-tools").classList.toggle("hidden", mode !== "host" || st.over);
-  $("local-tools").classList.toggle("hidden", mode !== "local" || st.over);
   if (st.over) showResult();
 }
 function renderPanel(){
@@ -826,9 +843,7 @@ window.addEventListener("DOMContentLoaded", () => {
   $("btn-join").onclick = startGuest;
   $("btn-local").onclick = startLocal;
   $("btn-leave").onclick = () => location.reload();
-  $("btn-start").onclick = hostStartGame;
-  $("btn-end-game").onclick = () => { if (mode === "host") hostAct(0, { kind:"end" }); };
-  $("btn-end-local").onclick = () => { if (mode === "local" && st){ st.over = true; st.seq++; renderGame(); } };
+  $("btn-start").onclick = () => { if (mode === "local") localStartGame(); else hostStartGame(); };
   $("btn-host-input").onclick = () => { hostOverride = !hostOverride; $("btn-host-input").textContent = hostOverride ? "代わり入力：ON（めくる人の画面になる）" : "めくる人の代わりに入力する"; renderPanel(); };
   for (const t of document.querySelectorAll(".tab")) t.onclick = () => switchView(t.dataset.view);
   $("btn-ar-start").onclick = startAR;
