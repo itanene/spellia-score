@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>SPELLIA スコア｜みんなで点数計算</title>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<style>
+  :root{ --teal:#0d2b33; --teal2:#123a44; --cream:#f3e9d2; --gold:#d9b45c; --ink:#e9e2cf; --dim:#9db4b5; --red:#ef6461; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{margin:0; background:linear-gradient(180deg,#0a1f26,#0d2b33 40%,#081820); color:var(--ink);
+    font-family:"Hiragino Mincho ProN","Yu Mincho",serif; min-height:100vh}
+  .wrap{max-width:560px; margin:0 auto; padding:18px 14px 40px}
+  .logo{font-size:44px; letter-spacing:.22em; color:var(--cream); margin:6px 0 0; text-align:center}
+  .logo .star{color:var(--gold)}
+  .subtitle{color:var(--dim); letter-spacing:.3em; font-size:11px; margin-top:4px; text-align:center}
+  h2.sec{color:var(--gold); font-size:16px; letter-spacing:.12em; margin:22px 0 8px}
+  .panel{background:rgba(255,255,255,.04); border:1px solid rgba(243,233,210,.22); border-radius:12px; padding:14px; margin-top:12px}
+  .btn{display:block; width:100%; margin:8px 0; background:var(--gold); color:#20303a; border:none; border-radius:10px;
+    padding:13px; font-size:16px; font-weight:bold; font-family:inherit; cursor:pointer}
+  .btn.sub{background:transparent; color:var(--cream); border:1px solid rgba(243,233,210,.4); font-weight:normal}
+  .btn:disabled{opacity:.45}
+  .btn.danger{background:transparent; color:var(--red); border:1px solid rgba(239,100,97,.5); font-weight:normal}
+  input[type=text]{background:rgba(255,255,255,.06); color:var(--cream); border:1px solid rgba(243,233,210,.35);
+    border-radius:8px; padding:10px; font-size:16px; width:100%; font-family:inherit}
+  .row{display:flex; gap:8px} .row>*{flex:1}
+  .msg{color:var(--gold); font-size:13px; min-height:18px; text-align:center}
+  .code-big{font-size:34px; letter-spacing:6px; color:var(--cream); text-align:center; margin:4px 0}
+  .colors{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px}
+  .color-chip{border:2px solid transparent; border-radius:999px; padding:7px 13px; font-size:14px; cursor:pointer; color:#12242b; font-weight:bold}
+  .color-chip.sel{border-color:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.35)}
+  .color-chip.taken{opacity:.3; pointer-events:none}
+  /* tabs */
+  .tabs{display:flex; gap:6px; margin:10px 0}
+  .tab{flex:1; text-align:center; padding:9px 0; border-radius:9px; border:1px solid rgba(243,233,210,.3);
+    color:var(--dim); cursor:pointer; font-size:14px; letter-spacing:.1em}
+  .tab.sel{background:var(--gold); color:#20303a; font-weight:bold; border-color:var(--gold)}
+  /* scoreboard */
+  .sb-row{display:flex; align-items:center; gap:10px; background:rgba(255,255,255,.045);
+    border:1px solid rgba(243,233,210,.16); border-radius:11px; padding:10px 12px; margin:7px 0; position:relative; transition:background .3s}
+  .sb-row.me{border-color:var(--gold)}
+  .sb-row.flipper{box-shadow:0 0 0 1px rgba(217,180,92,.55) inset}
+  .dot{width:16px; height:16px; border-radius:50%; flex:none; border:1px solid rgba(0,0,0,.35)}
+  .sb-name{font-size:15px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .sb-name .tag{font-size:10px; color:var(--dim); letter-spacing:.08em}
+  .mark{font-size:12px; padding:2px 7px; border-radius:999px; letter-spacing:.05em; flex:none}
+  .mark.first{background:var(--gold); color:#20303a; font-weight:bold}
+  .mark.last{background:rgba(239,100,97,.18); color:#ff9d9a; border:1px solid rgba(239,100,97,.55)}
+  .sb-score{font-size:26px; color:var(--cream); min-width:56px; text-align:right; font-variant-numeric:tabular-nums}
+  .flash{position:absolute; right:14px; top:-9px; font-size:15px; font-weight:bold; pointer-events:none; animation:floatUp 1.6s ease-out forwards}
+  .flash.plus{color:#7de08a} .flash.minus{color:#ff9d9a}
+  @keyframes floatUp{0%{opacity:0; transform:translateY(6px)}15%{opacity:1}100%{opacity:0; transform:translateY(-16px)}}
+  .turn-banner{text-align:center; color:var(--cream); font-size:15px; margin:10px 0 2px; letter-spacing:.06em}
+  .turn-banner b{color:var(--gold)}
+  /* card input */
+  .card-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:8px}
+  .card-btn{display:flex; align-items:center; gap:9px; background:rgba(255,255,255,.05); color:var(--ink);
+    border:1px solid rgba(243,233,210,.3); border-radius:10px; padding:9px 10px; font-family:inherit; cursor:pointer; text-align:left}
+  .card-btn.sel{border-color:var(--gold); background:rgba(217,180,92,.14)}
+  .card-btn .ic{font-size:24px; flex:none}
+  .card-btn img{width:40px; height:56px; object-fit:cover; border-radius:4px; flex:none}
+  .card-btn .nm{font-size:16px; color:var(--cream)}
+  .card-btn .tx{font-size:10.5px; color:var(--dim); line-height:1.35}
+  .owner-chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px}
+  .owner-chip{border:1.5px solid rgba(243,233,210,.35); background:transparent; color:var(--ink); border-radius:999px;
+    padding:8px 14px; font-size:14px; cursor:pointer; font-family:inherit}
+  .owner-chip.sel{border-color:#fff; background:rgba(255,255,255,.14); font-weight:bold}
+  .preview{background:rgba(217,180,92,.1); border:1px solid rgba(217,180,92,.5); border-radius:10px; padding:10px 12px; margin-top:10px; font-size:15px; line-height:1.7}
+  .badge{display:inline-block; background:rgba(176,125,255,.2); color:#cdb2ff; border:1px solid rgba(176,125,255,.55);
+    border-radius:999px; padding:2px 10px; font-size:12px; margin-left:6px}
+  .mini{font-size:12px; color:var(--dim); line-height:1.7}
+  details{margin-top:10px} summary{cursor:pointer; color:var(--gold); font-size:13px}
+  .rule-list{font-size:13px; line-height:1.9}
+  /* log */
+  .log-turn{border-bottom:1px solid rgba(243,233,210,.14); padding:8px 2px}
+  .log-turn .lt{color:var(--gold); font-size:13px; letter-spacing:.06em}
+  .log-turn .lc{font-size:14.5px; line-height:1.8}
+  .plus{color:#7de08a} .minus{color:#ff9d9a}
+  /* modal */
+  .modal-bg{position:fixed; inset:0; background:rgba(2,8,11,.78); display:flex; align-items:flex-end; justify-content:center; z-index:40}
+  .modal{background:var(--teal2); border:1px solid rgba(243,233,210,.35); border-radius:16px 16px 0 0; width:100%; max-width:560px;
+    padding:18px 16px 26px; max-height:86vh; overflow:auto}
+  /* AR */
+  #ar-stage{position:relative; border-radius:12px; overflow:hidden; background:#000; aspect-ratio:3/4; max-height:70vh; margin:0 auto}
+  #ar-cam{width:100%; height:100%; object-fit:cover; display:block}
+  #ar-fx{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none}
+  #ar-banner{position:absolute; left:0; right:0; bottom:10px; text-align:center; color:var(--cream); font-size:20px;
+    letter-spacing:.2em; text-shadow:0 2px 8px #000}
+  #ar-status{text-align:center; color:var(--dim); font-size:13px; margin-top:8px; min-height:18px}
+  .hidden{display:none !important}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===== title ===== -->
+  <section id="scr-title">
+    <p class="logo">SPELLIA<span class="star">✦</span></p>
+    <p class="subtitle">SCORE KEEPER</p>
+    <div class="panel">
+      <h3 style="margin:0 0 8px; color:var(--gold); font-size:15px; letter-spacing:.1em">みんなで点数計算</h3>
+      <p class="mini">本物のカードで遊びながら、点数だけをスマホで計算する道具だよ。全員の点数がリアルタイムで見えて、ターンごとの記録も残る。ARもこのページの中で楽しめるよ。</p>
+      <label class="mini">あなたの名前</label>
+      <input id="in-name" type="text" maxlength="10" placeholder="名前（10文字まで）">
+      <label class="mini" style="margin-top:10px; display:block">あなたの色（カードの枠と同じ色にしてね）</label>
+      <div class="colors" id="color-picker"></div>
+      <button class="btn" id="btn-create">部屋を作る（ホスト）</button>
+      <div class="row">
+        <input id="in-code" type="text" maxlength="4" placeholder="部屋コード" style="text-transform:uppercase; flex:1.2">
+        <button class="btn sub" id="btn-join" style="flex:1; margin:0">部屋に入る</button>
+      </div>
+      <button class="btn sub" id="btn-local">お試し（1台で触ってみる）</button>
+      <p class="msg" id="title-msg"></p>
+      <details>
+        <summary>使い方</summary>
+        <div class="rule-list">
+          1. ホストが「部屋を作る」→ 出てきた4文字のコードをみんなに伝える<br>
+          2. みんなはコードを入れて「部屋に入る」。名前と自分の色を選んでね<br>
+          3. ホストが対戦を始めると、時計回りに「めくる人」が回る<br>
+          4. めくる人は、カードをめくるたびに「めくったカード」と「持ち主」を選んで確定。点数はアプリが自動で計算して、全員の画面にその場で出る<br>
+          5. 「禁術」は最後にまとめて発動。「天秤」がめくられずに残ったら、ターンの終わりに持ち主を選んでね<br>
+          6. ログにはターンごとの点数の動きだけが残る（カードの名前は残らないよ）<br>
+          7. ARタブでは、タブを閉じずにカードのARエフェクトが見られる
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ===== lobby ===== -->
+  <section id="scr-lobby" class="hidden">
+    <p class="logo" style="font-size:30px">SPELLIA<span class="star">✦</span></p>
+    <div class="panel">
+      <p class="mini" style="text-align:center">部屋コード</p>
+      <p class="code-big" id="lobby-code">----</p>
+      <div id="lobby-players"></div>
+      <p class="mini" id="lobby-status"></p>
+      <button class="btn hidden" id="btn-start">対戦をはじめる</button>
+      <button class="btn danger" id="btn-leave">やめる</button>
+    </div>
+  </section>
+
+  <!-- ===== game ===== -->
+  <section id="scr-game" class="hidden">
+    <div style="display:flex; justify-content:space-between; align-items:baseline">
+      <span style="color:var(--cream); letter-spacing:.18em">SPELLIA <span style="color:var(--gold)">✦</span> スコア</span>
+      <span class="mini" id="game-room"></span>
+    </div>
+    <div class="tabs">
+      <div class="tab sel" data-view="score">点数</div>
+      <div class="tab" data-view="log">ログ</div>
+      <div class="tab" data-view="ar">AR</div>
+    </div>
+
+    <div id="view-score">
+      <p class="turn-banner" id="turn-banner"></p>
+      <div id="scoreboard"></div>
+      <div id="flipper-panel"></div>
+      <div class="panel hidden" id="host-tools">
+        <h3 style="margin:0 0 6px; color:var(--gold); font-size:14px">ホスト用</h3>
+        <button class="btn sub" id="btn-host-input" style="margin:4px 0">めくる人の代わりに入力する</button>
+        <button class="btn danger" id="btn-end-game" style="margin:4px 0">対戦を終わらせる（結果発表）</button>
+      </div>
+    </div>
+
+    <div id="view-log" class="hidden">
+      <p class="mini">ターンごとの点数の動きだけの記録だよ（カードの名前は残りません）。</p>
+      <div id="log-list"></div>
+    </div>
+
+    <div id="view-ar" class="hidden">
+      <div id="ar-stage">
+        <video id="ar-cam" playsinline muted></video>
+        <video id="ar-fx" playsinline muted loop class="hidden"></video>
+        <div id="ar-banner"></div>
+      </div>
+      <p id="ar-status">カードのQRをカメラに映すとエフェクトが出るよ</p>
+      <button class="btn" id="btn-ar-start">カメラを起動</button>
+      <canvas id="ar-canvas" class="hidden"></canvas>
+    </div>
+  </section>
+</div>
+
+<!-- settle modal -->
+<div id="settle-bg" class="modal-bg hidden">
+  <div class="modal">
+    <h3 style="margin:0 0 8px; color:var(--gold); letter-spacing:.1em">ターンの終わり</h3>
+    <div id="settle-kinjutsu"></div>
+    <p class="mini" style="margin-top:12px">「天秤」がめくられずに残っていたら、持ち主を全部選んでね（なければ、そのまま確定）。</p>
+    <div class="owner-chips" id="settle-tenbin"></div>
+    <div class="preview hidden" id="settle-preview"></div>
+    <button class="btn" id="btn-settle-ok">確定して次の人へ</button>
+    <button class="btn sub" id="btn-settle-cancel">もどる</button>
+  </div>
+</div>
+
+<!-- result overlay -->
+<div id="result-bg" class="modal-bg hidden">
+  <div class="modal">
+    <h3 style="margin:0 0 10px; color:var(--gold); letter-spacing:.14em; text-align:center">✦ 結果発表 ✦</h3>
+    <div id="result-list"></div>
+    <button class="btn" id="btn-result-close" style="margin-top:14px">タイトルへ戻る</button>
+  </div>
+</div>
+
+<script>
+/*CORE-START*/
+/* ===== SPELLIA スコア計算コア（ブラウザ版の効果判定と同一仕様） ===== */
+const CARD_DEFS = {
+  maseki:    { name:"魔石",   icon:"🔷", text:"めくった人 +3",            needsOwner:false, art:"" },
+  bousou:    { name:"暴走",   icon:"🔥", text:"めくった人 +1、めくり終了", needsOwner:false, art:"" },
+  akugi:     { name:"悪戯",   icon:"🦊", text:"めくった人は持ち主に2P渡す", needsOwner:true,  art:"" },
+  shukufuku: { name:"祝福",   icon:"🕊️", text:"1位が全員に1Pずつ渡す",     needsOwner:false, art:"" },
+  shuseki:   { name:"主席",   icon:"🦅", text:"持ち主からもらう（持ち主が1位なら3P、ちがうなら1P）", needsOwner:true, art:"" },
+  tsukaima:  { name:"使い魔", icon:"🐈‍⬛", text:"めくった人と持ち主が +2ずつ", needsOwner:true, art:"" },
+  kinjutsu:  { name:"禁術",   icon:"🐉", text:"最後に発動。そのターンまだ増えてなければ+4、増えてたら-1", needsOwner:false, art:"" },
+  tenbin:    { name:"天秤",   icon:"⚖️", text:"持ち主から2Pもらう",         needsOwner:true,  art:"" },
+  kago:      { name:"加護",   icon:"🦌", text:"最下位 +2（同率なら全員+1）", needsOwner:false, art:"" },
+  yakusai:   { name:"厄災",   icon:"🐦‍⬛", text:"めくった人は全員に1Pずつ渡す", needsOwner:false, art:"" },
+};
+const CARD_ORDER = ["maseki","bousou","akugi","shukufuku","shuseki","tsukaima","kinjutsu","tenbin","kago","yakusai"];
+const PLAYER_COLORS = [
+  { key:"aka",     name:"あか",     hex:"#ef6461" },
+  { key:"ao",      name:"あお",     hex:"#5b8def" },
+  { key:"midori",  name:"みどり",   hex:"#58b368" },
+  { key:"kiiro",   name:"きいろ",   hex:"#e3b505" },
+  { key:"murasaki",name:"むらさき", hex:"#9b7ede" },
+  { key:"shiro",   name:"しろ",     hex:"#e8e4da" },
+];
+
+function newScoreState(players){ /* players: [{name,color}] */
+  return {
+    players: players.map((p,i)=>({ id:i, name:p.name, color:p.color, score:0, online:true })),
+    turn: 1, flipper: 0,
+    gained: false, pendingKinjutsu: 0, canFlip: true,
+    turnChanges: {}, log: [], over: false, seq: 0,
+  };
+}
+function _applyDeltas(st, deltas){
+  for (const k of Object.keys(deltas)){
+    const i = Number(k);
+    st.players[i].score += deltas[k];
+    st.turnChanges[i] = (st.turnChanges[i]||0) + deltas[k];
+    if (st.turnChanges[i] === 0) delete st.turnChanges[i];
+  }
+}
+/* めくり1回分の変動を計算する（状態は変えない） */
+function computeFlip(st, card, owner){
+  const F = st.flipper, deltas = {};
+  const add = (i,d)=>{ deltas[i] = (deltas[i]||0) + d; };
+  if (card === "kinjutsu") return { pending:true, deltas };
+  const scores = st.players.map(p=>p.score);
+  const mx = Math.max(...scores), mn = Math.min(...scores);
+  if (card === "maseki") add(F, 3);
+  else if (card === "bousou") add(F, 1);
+  else if (card === "akugi"){ add(F,-2); add(owner, 2); }
+  else if (card === "shukufuku"){
+    for (const g of st.players.filter(p=>p.score===mx))
+      for (const q of st.players) if (q.id !== g.id){ add(g.id,-1); add(q.id, 1); }
+  }
+  else if (card === "shuseki"){ const v = st.players[owner].score === mx ? 3 : 1; add(F, v); add(owner, -v); }
+  else if (card === "tsukaima"){ add(F, 2); add(owner, 2); }
+  else if (card === "tenbin"){ add(F, 2); add(owner, -2); }
+  else if (card === "kago"){
+    const lasts = st.players.filter(p=>p.score===mn);
+    if (lasts.length === 1) add(lasts[0].id, 2); else for (const q of lasts) add(q.id, 1);
+  }
+  else if (card === "yakusai"){ for (const q of st.players) if (q.id !== F){ add(F,-1); add(q.id, 1); } }
+  return { pending:false, deltas };
+}
+/* めくり1回を確定する */
+function applyFlip(st, card, owner){
+  if (card === "kinjutsu"){ st.pendingKinjutsu++; st.seq++; return { pending:true, deltas:{} }; }
+  const { deltas } = computeFlip(st, card, owner);
+  const before = st.players[st.flipper].score;
+  _applyDeltas(st, deltas);
+  if (st.players[st.flipper].score > before) st.gained = true;
+  if (card === "bousou") st.canFlip = false;
+  st.seq++;
+  return { pending:false, deltas };
+}
+/* ターン終了の解決プレビュー（禁術→天秤の順。状態は変えない） */
+function computeSettle(st, tenbinOwners){
+  const F = st.flipper, deltas = {};
+  const add = (i,d)=>{ deltas[i] = (deltas[i]||0) + d; };
+  const kinjutsuDelta = st.pendingKinjutsu ? (st.gained ? -1 : 4) * st.pendingKinjutsu : 0;
+  if (kinjutsuDelta) add(F, kinjutsuDelta);
+  for (const o of tenbinOwners)
+    for (const q of st.players) if (q.id !== o){ add(q.id,-1); add(o, 1); }
+  return { kinjutsuDelta, deltas };
+}
+function settleTurn(st, tenbinOwners){
+  const { deltas } = computeSettle(st, tenbinOwners);
+  _applyDeltas(st, deltas);
+  st.log.push({ turn: st.turn, flipper: st.flipper, changes: { ...st.turnChanges } });
+  st.turnChanges = {}; st.pendingKinjutsu = 0; st.gained = false; st.canFlip = true;
+  st.flipper = (st.flipper + 1) % st.players.length;
+  st.turn++; st.seq++;
+  return deltas;
+}
+/* 手動の点数修正（ミスの直し用。gained には影響しない） */
+function applyManual(st, playerId, d){
+  const deltas = {}; deltas[playerId] = d;
+  _applyDeltas(st, deltas); st.seq++;
+  return deltas;
+}
+function standings(st){
+  const scores = st.players.map(p=>p.score);
+  const mx = Math.max(...scores), mn = Math.min(...scores);
+  return {
+    max: mx, min: mn,
+    first: st.players.filter(p=>p.score===mx).map(p=>p.id),
+    last:  st.players.filter(p=>p.score===mn).map(p=>p.id),
+  };
+}
+/*CORE-END*/
+</script>
+
+<script>
+/* ===== UI / ネットワーク / AR ===== */
+const $ = id => document.getElementById(id);
+const NET_PREFIX = "spellia-score-v1-";
+const NET_OPTS = { config: { iceServers: [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turns:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+] } };
+const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const makeCode = () => { let c=""; for (let i=0;i<4;i++) c += CODE_CHARS[Math.floor(Math.random()*CODE_CHARS.length)]; return c; };
+const colorOf = key => PLAYER_COLORS.find(c=>c.key===key) || PLAYER_COLORS[0];
+const esc = s => String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+
+let mode = "title";           // title | host | guest | local
+let peer = null, hostConn = null;
+let conns = {};               // host: seat -> conn
+let lobby = [];               // host: [{name,color}]
+let mySeat = -1, roomCode = "";
+let st = null;                // host/local: 実体 / guest: スナップショット
+let lastSeq = -1, hostOverride = false;
+let selCard = null, selOwner = null, settleTenbin = new Set();
+let myName = "", myColor = "aka";
+
+/* ---------- title ---------- */
+function renderColorPicker(){
+  $("color-picker").innerHTML = PLAYER_COLORS.map(c =>
+    `<button type="button" class="color-chip ${c.key===myColor?"sel":""}" data-color="${c.key}" style="background:${c.hex}">${c.name}</button>`).join("");
+  for (const b of $("color-picker").querySelectorAll(".color-chip"))
+    b.onclick = () => { myColor = b.dataset.color; renderColorPicker(); };
+}
+function readProfile(){
+  myName = $("in-name").value.trim() || colorOf(myColor).name;
+}
+function titleMsg(t){ $("title-msg").textContent = t || ""; }
+
+/* ---------- screen switching ---------- */
+function show(id){
+  for (const s of ["scr-title","scr-lobby","scr-game"]) $(s).classList.toggle("hidden", s !== id);
+}
+
+/* ---------- host ---------- */
+function startHost(){
+  readProfile();
+  if (typeof Peer === "undefined") return titleMsg("通信の準備ができなかった。ネット接続を確認して、もう一度押してね。");
+  roomCode = makeCode();
+  peer = new Peer(NET_PREFIX + roomCode, NET_OPTS);
+  peer.on("open", () => {
+    mode = "host"; mySeat = 0;
+    lobby = [{ name: myName, color: myColor }];
+    conns = {};
+    show("scr-lobby"); renderLobby();
+  });
+  peer.on("connection", conn => {
+    conn.on("data", msg => onHostData(conn, msg));
+    conn.on("close", () => {
+      const seat = Number(Object.keys(conns).find(k => conns[k] === conn));
+      if (!Number.isNaN(seat)){
+        delete conns[seat];
+        if (st && st.players[seat]){ st.players[seat].online = false; broadcastState({}); }
+        else { lobby.splice(seat, 1); reassignSeats(); broadcastLobby(); renderLobby(); }
+      }
+    });
+  });
+  peer.on("error", e => {
+    if (e.type === "unavailable-id"){ try{peer.destroy();}catch(_){} titleMsg("部屋コードが重なってしまった。もう一度押してね。"); }
+    else titleMsg("接続で問題が起きたよ：" + e.type);
+  });
+}
+function reassignSeats(){
+  const map = {};
+  lobby.forEach((p, i) => { if (conns[p.seat] !== undefined) map[i] = conns[p.seat]; });
+  const nc = {};
+  lobby.forEach((p, i) => { if (map[i]) nc[i] = map[i]; p.seat = i; });
+  conns = nc;
+}
+function onHostData(conn, msg){
+  if (!msg || typeof msg !== "object") return;
+  if (msg.t === "join"){
+    if (st) { try{ conn.send({ t:"closed", reason:"対戦はもう始まっています" }); }catch(_){} return; }
+    if (lobby.length >= 6){ try{ conn.send({ t:"closed", reason:"部屋がいっぱいです" }); }catch(_){} return; }
+    let color = msg.color;
+    if (lobby.some(p => p.color === color)) color = (PLAYER_COLORS.find(c => !lobby.some(p => p.color === c.key)) || PLAYER_COLORS[0]).key;
+    const seat = lobby.length;
+    lobby.push({ name: String(msg.name || "プレイヤー").slice(0, 10), color, seat });
+    conns[seat] = conn;
+    conn.send({ t:"welcome", seat, color });
+    broadcastLobby(); renderLobby();
+  }
+  else if (msg.t === "act"){
+    const seat = Number(Object.keys(conns).find(k => conns[k] === conn));
+    if (!Number.isNaN(seat)) hostAct(seat, msg);
+  }
+}
+function broadcastLobby(){
+  const data = { t:"lobby", players: lobby.map(p => ({ name:p.name, color:p.color })) };
+  for (const k of Object.keys(conns)) try{ conns[k].send(data); }catch(_){}
+}
+function hostStartGame(){
+  st = newScoreState(lobby.map(p => ({ name:p.name, color:p.color })));
+  broadcastState({});
+  show("scr-game"); renderGame();
+}
+function hostAct(seat, msg){
+  if (!st || st.over) return;
+  const isFlipper = seat === st.flipper;
+  const isHostSeat = seat === 0;
+  if (msg.kind === "end"){ if (isHostSeat){ st.over = true; st.seq++; broadcastState({}); renderGame(); } return; }
+  if (!isFlipper && !isHostSeat) return;
+  if (msg.kind === "flip"){
+    if (!st.canFlip) return;
+    const r = applyFlip(st, msg.card, msg.owner);
+    broadcastState(r.deltas); renderGame();
+  }
+  else if (msg.kind === "settle"){
+    const owners = Array.isArray(msg.tenbinOwners) ? msg.tenbinOwners.filter(o => o !== st.flipper) : [];
+    const r = settleTurn(st, owners);
+    broadcastState(r); renderGame();
+  }
+  else if (msg.kind === "manual"){
+    const r = applyManual(st, msg.player, msg.d > 0 ? 1 : -1);
+    broadcastState(r); renderGame();
+  }
+}
+function snapshot(){
+  return { players: st.players, turn: st.turn, flipper: st.flipper, gained: st.gained,
+    pendingKinjutsu: st.pendingKinjutsu, canFlip: st.canFlip, turnChanges: st.turnChanges,
+    log: st.log, over: st.over, seq: st.seq };
+}
+function broadcastState(flash){
+  const data = { t:"state", snap: snapshot(), flash: flash || {} };
+  for (const k of Object.keys(conns)) try{ conns[k].send(data); }catch(_){}
+}
+
+/* ---------- guest ---------- */
+function startGuest(){
+  readProfile();
+  const code = $("in-code").value.trim().toUpperCase();
+  if (code.length !== 4) return titleMsg("部屋コードは4文字だよ。ホストに聞いてね。");
+  if (typeof Peer === "undefined") return titleMsg("通信の準備ができなかった。ネット接続を確認してね。");
+  roomCode = code;
+  peer = new Peer(NET_OPTS);
+  let opened = false;
+  const timer = setTimeout(() => { if (!opened) titleMsg("部屋につながらなかった。コードが合っているか、ホストが部屋を作っているか確認してね。"); }, 15000);
+  peer.on("open", () => {
+    hostConn = peer.connect(NET_PREFIX + code, { reliable: true });
+    hostConn.on("open", () => {
+      opened = true; clearTimeout(timer);
+      hostConn.send({ t:"join", name: myName, color: myColor });
+    });
+    hostConn.on("data", msg => {
+      if (!msg || typeof msg !== "object") return;
+      if (msg.t === "welcome"){ mode = "guest"; mySeat = msg.seat; myColor = msg.color; show("scr-lobby"); renderLobbyGuest(); }
+      else if (msg.t === "lobby"){ lobby = msg.players; if (mode === "guest") renderLobbyGuest(); }
+      else if (msg.t === "state"){ st = msg.snap; if ($("scr-game").classList.contains("hidden")) show("scr-game"); renderGame(msg.flash); }
+      else if (msg.t === "closed"){ titleMsg(msg.reason || "部屋に入れなかった。"); }
+    });
+    hostConn.on("close", () => { alert("ホストとの接続が切れました。タイトルに戻ります。"); location.reload(); });
+  });
+  peer.on("error", e => { clearTimeout(timer); titleMsg("接続で問題が起きたよ：" + e.type); });
+}
+function sendAct(msg){
+  if (mode === "local" || mode === "host"){ hostAct(mySeat === -1 ? st.flipper : mySeat, { ...msg, _local:true }); if (mode === "host") renderGame(); return; }
+  if (hostConn && hostConn.open) hostConn.send({ t:"act", ...msg });
+}
+
+/* ---------- local test mode ---------- */
+function startLocal(){
+  readProfile();
+  mode = "local"; mySeat = -1; roomCode = "";
+  const dummies = ["ルナ","セト","ミオ","アストラ","ノア"];
+  const n = 4;
+  const players = [{ name: myName, color: myColor }];
+  const used = new Set([myColor]);
+  for (let i = 0; i < n - 1; i++){
+    const c = PLAYER_COLORS.find(c => !used.has(c.key)); used.add(c.key);
+    players.push({ name: dummies[i], color: c.key });
+  }
+  st = newScoreState(players);
+  show("scr-game"); renderGame();
+}
+
+/* ---------- lobby render ---------- */
+function playerRows(list){
+  return list.map((p, i) => {
+    const c = colorOf(p.color);
+    return `<div class="sb-row"><span class="dot" style="background:${c.hex}"></span>
+      <span class="sb-name">${esc(p.name)} ${i===0?'<span class="tag">ホスト</span>':''}</span>
+      <span class="mini">${c.name}</span></div>`;
+  }).join("");
+}
+function renderLobby(){
+  $("lobby-code").textContent = roomCode;
+  $("lobby-players").innerHTML = playerRows(lobby);
+  $("lobby-status").textContent = "友達に部屋コードを伝えてね。2人から始められます（本番は3〜6人）。";
+  $("btn-start").classList.toggle("hidden", lobby.length < 2);
+}
+function renderLobbyGuest(){
+  $("lobby-code").textContent = roomCode;
+  $("lobby-players").innerHTML = playerRows(lobby);
+  $("lobby-status").textContent = "ホストが対戦を始めるのを待っています…（あなたの色は " + colorOf(myColor).name + "）";
+  $("btn-start").classList.add("hidden");
+}
+
+/* ---------- game render ---------- */
+function canInput(){
+  if (!st) return false;
+  if (mode === "local") return true;
+  if (mode === "host" && hostOverride) return true;
+  return mySeat === st.flipper;
+}
+function fmtDelta(d){ return (d > 0 ? "+" : "−") + Math.abs(d); }
+function deltaHTML(stt, deltas){
+  return Object.keys(deltas).filter(k => deltas[k] !== 0).map(k => {
+    const p = stt.players[k];
+    return `<span style="color:${colorOf(p.color).hex}">●</span> ${esc(p.name)} <b class="${deltas[k]>0?"plus":"minus"}">${fmtDelta(deltas[k])}</b>`;
+  }).join("　");
+}
+function renderGame(flash){
+  if (!st) return;
+  $("game-room").textContent = mode === "local" ? "お試しモード" : ("部屋 " + roomCode);
+  const sd = standings(st);
+  const F = st.players[st.flipper];
+  $("turn-banner").innerHTML =
+    `ターン ${st.turn}　<b>${esc(F.name)}</b> のめくり番` +
+    (st.pendingKinjutsu ? `<span class="badge">禁術 ×${st.pendingKinjutsu} 保留中</span>` : "") +
+    (st.over ? "　<b>対戦終了</b>" : "");
+  $("scoreboard").innerHTML = st.players.map(p => {
+    const c = colorOf(p.color);
+    const marks = [];
+    if (sd.max !== sd.min){
+      if (sd.first.includes(p.id)) marks.push(`<span class="mark first">👑 1位</span>`);
+      if (sd.last.includes(p.id)) marks.push(`<span class="mark last">最下位</span>`);
+    }
+    return `<div class="sb-row ${p.id===mySeat?"me":""} ${p.id===st.flipper?"flipper":""}" id="sb-${p.id}" style="${p.online?"":"opacity:.45"}">
+      <span class="dot" style="background:${c.hex}"></span>
+      <span class="sb-name">${esc(p.name)} ${p.id===st.flipper?'<span class="tag">めくり番</span>':""} ${p.online?"":'<span class="tag">接続切れ</span>'}</span>
+      ${marks.join("")}
+      <span class="sb-score">${p.score}</span></div>`;
+  }).join("");
+  if (flash && st.seq !== lastSeq){
+    for (const k of Object.keys(flash)) if (flash[k] !== 0){
+      const row = $("sb-" + k); if (!row) continue;
+      const s = document.createElement("span");
+      s.className = "flash " + (flash[k] > 0 ? "plus" : "minus");
+      s.textContent = fmtDelta(flash[k]);
+      row.appendChild(s); setTimeout(() => s.remove(), 1700);
+    }
+  }
+  lastSeq = st.seq;
+  renderPanel();
+  renderLog();
+  $("host-tools").classList.toggle("hidden", mode !== "host" || st.over);
+  if (st.over) showResult();
+}
+function renderPanel(){
+  const el = $("flipper-panel");
+  if (!st || st.over){ el.innerHTML = ""; return; }
+  if (!canInput()){
+    const F = st.players[st.flipper];
+    el.innerHTML = `<div class="panel"><p class="mini" style="text-align:center">いまは ${esc(F.name)} が入力する番だよ。<br>点数が変わると、ここにすぐ出るよ。</p></div>`;
+    return;
+  }
+  let h = `<div class="panel"><h3 style="margin:0 0 4px; color:var(--gold); font-size:15px">めくったカードを選んでね</h3>`;
+  if (st.gained) h += `<p class="mini">このターン、あなたはもうポイントが増えています（禁術は −1 になります）。</p>`;
+  if (!st.canFlip){
+    h += `<p class="mini">暴走で、このターンのめくりは終わりです。</p>`;
+  } else {
+    h += `<div class="card-grid">` + CARD_ORDER.map(k => {
+      const d = CARD_DEFS[k];
+      const art = d.art ? `<img src="${d.art}" alt="">` : `<span class="ic">${d.icon}</span>`;
+      return `<button type="button" class="card-btn ${selCard===k?"sel":""}" data-card="${k}">${art}<span><span class="nm">${d.name}</span><br><span class="tx">${d.text}</span></span></button>`;
+    }).join("") + `</div>`;
+    if (selCard && CARD_DEFS[selCard].needsOwner){
+      h += `<p class="mini" style="margin-top:10px">持ち主はだれ？</p><div class="owner-chips">` +
+        st.players.filter(p => p.id !== st.flipper).map(p =>
+          `<button type="button" class="owner-chip ${selOwner===p.id?"sel":""}" data-owner="${p.id}"><span style="color:${colorOf(p.color).hex}">●</span> ${esc(p.name)}</button>`).join("") + `</div>`;
+    }
+    if (selCard && (!CARD_DEFS[selCard].needsOwner || selOwner !== null)){
+      const pv = selCard === "kinjutsu"
+        ? `<b>禁術</b> はターンの最後にまとめて発動します（いまは保留に入ります）`
+        : deltaHTML(st, computeFlip(st, selCard, selOwner).deltas) || "変動なし";
+      h += `<div class="preview">${pv}</div>
+            <button class="btn" id="btn-flip-ok">これで確定</button>
+            <button class="btn sub" id="btn-flip-cancel">選びなおす</button>`;
+    }
+  }
+  h += `<button class="btn sub" id="btn-turn-end" style="margin-top:12px">ターンを終わる</button>
+        <details><summary>点数を直す（入力ミスの時）</summary><div style="margin-top:8px">` +
+        st.players.map(p => `<div class="row" style="align-items:center; margin:4px 0">
+          <span style="flex:2"><span style="color:${colorOf(p.color).hex}">●</span> ${esc(p.name)}</span>
+          <button class="btn sub" data-manual="${p.id}|-1" style="margin:0; padding:7px">−1</button>
+          <button class="btn sub" data-manual="${p.id}|1" style="margin:0; padding:7px">+1</button></div>`).join("") +
+        `</div></details></div>`;
+  el.innerHTML = h;
+  for (const b of el.querySelectorAll(".card-btn")) b.onclick = () => { selCard = b.dataset.card; selOwner = null; renderPanel(); };
+  for (const b of el.querySelectorAll(".owner-chip")) b.onclick = () => { selOwner = Number(b.dataset.owner); renderPanel(); };
+  const ok = $("btn-flip-ok");
+  if (ok) ok.onclick = () => { sendAct({ kind:"flip", card: selCard, owner: selOwner }); selCard = null; selOwner = null; if (mode !== "guest") renderGame(); };
+  const cancel = $("btn-flip-cancel");
+  if (cancel) cancel.onclick = () => { selCard = null; selOwner = null; renderPanel(); };
+  for (const b of el.querySelectorAll("[data-manual]")) b.onclick = () => { const [p, d] = b.dataset.manual.split("|"); sendAct({ kind:"manual", player: Number(p), d: Number(d) }); if (mode !== "guest") renderGame(); };
+  $("btn-turn-end").onclick = openSettle;
+}
+function renderLog(){
+  const el = $("log-list");
+  if (!st){ el.innerHTML = ""; return; }
+  const entries = [...st.log].reverse();
+  const cur = Object.keys(st.turnChanges).length
+    ? `<div class="log-turn"><span class="lt">ターン ${st.turn}（進行中）</span><br><span class="lc">${deltaHTML(st, st.turnChanges)}</span></div>` : "";
+  el.innerHTML = cur + (entries.map(e => {
+    const F = st.players[e.flipper];
+    return `<div class="log-turn"><span class="lt">ターン ${e.turn}｜めくり：${esc(F ? F.name : "?")}</span><br><span class="lc">${deltaHTML(st, e.changes) || "変動なし"}</span></div>`;
+  }).join("") || `<p class="mini">まだ記録がありません。</p>`);
+}
+
+/* ---------- settle modal ---------- */
+function openSettle(){
+  settleTenbin = new Set();
+  renderSettle();
+  $("settle-bg").classList.remove("hidden");
+}
+function renderSettle(){
+  const F = st.players[st.flipper];
+  $("settle-kinjutsu").innerHTML = st.pendingKinjutsu
+    ? `<p style="font-size:15px; line-height:1.7">禁術 ×${st.pendingKinjutsu}：${esc(F.name)} はこのターン ${st.gained ? "もうポイントが増えているので <b class='minus'>−1</b> ずつ" : "まだポイントが増えていないので <b class='plus'>+4</b> ずつ"} になります。</p>`
+    : `<p class="mini">禁術の保留はありません。</p>`;
+  $("settle-tenbin").innerHTML = st.players.filter(p => p.id !== st.flipper).map(p =>
+    `<button type="button" class="owner-chip ${settleTenbin.has(p.id)?"sel":""}" data-tb="${p.id}"><span style="color:${colorOf(p.color).hex}">●</span> ${esc(p.name)}</button>`).join("");
+  for (const b of $("settle-tenbin").querySelectorAll("[data-tb]")) b.onclick = () => {
+    const id = Number(b.dataset.tb);
+    settleTenbin.has(id) ? settleTenbin.delete(id) : settleTenbin.add(id);
+    renderSettle();
+  };
+  const { deltas } = computeSettle(st, [...settleTenbin]);
+  const pv = $("settle-preview");
+  if (Object.keys(deltas).length){ pv.classList.remove("hidden"); pv.innerHTML = deltaHTML(st, deltas); }
+  else pv.classList.add("hidden");
+}
+
+/* ---------- result ---------- */
+function showResult(){
+  const sorted = [...st.players].sort((a, b) => b.score - a.score);
+  let rank = 0, prev = null;
+  $("result-list").innerHTML = sorted.map((p, i) => {
+    if (p.score !== prev){ rank = i + 1; prev = p.score; }
+    return `<div class="sb-row"><span style="min-width:34px; color:var(--gold)">${rank}位</span>
+      <span class="dot" style="background:${colorOf(p.color).hex}"></span>
+      <span class="sb-name">${rank===1?"👑 ":""}${esc(p.name)}</span>
+      <span class="sb-score">${p.score}</span></div>`;
+  }).join("");
+  $("result-bg").classList.remove("hidden");
+}
+
+/* ---------- tabs & AR ---------- */
+let arStream = null, arRAF = 0, arCoolUntil = 0;
+const AR_FX = {
+  "01": ["phoenix.mp4","魔石"], "02": ["smoke.mp4","不発"], "03": ["horse.mp4","暴走"],
+  "04": ["fox.mp4","悪戯"], "05": ["bird.mp4","祝福"], "06": ["griffin.mp4","主席"],
+  "07": ["cat.mp4","使い魔"], "08": ["shadowdragon.mp4","禁術"], "09": ["dragon.mp4","天秤"],
+  "10": ["stag.mp4","加護"], "11": ["crows.mp4","厄災"],
+};
+const AR_BASE = "https://itanene.github.io/spellia-ar/";
+function parseCardId(data){
+  const m1 = /SPELLIA:(\d{2})/.exec(data); if (m1 && AR_FX[m1[1]]) return m1[1];
+  const m2 = /card=(\d{2})/.exec(data); if (m2 && AR_FX[m2[1]]) return m2[1];
+  const m3 = /itanene\.github\.io\/(\d{2})/.exec(data); if (m3 && AR_FX[m3[1]]) return m3[1];
+  return null;
+}
+function switchView(v){
+  for (const t of document.querySelectorAll(".tab")) t.classList.toggle("sel", t.dataset.view === v);
+  $("view-score").classList.toggle("hidden", v !== "score");
+  $("view-log").classList.toggle("hidden", v !== "log");
+  $("view-ar").classList.toggle("hidden", v !== "ar");
+  if (v !== "ar") stopAR();
+  if (v === "log") renderLog();
+}
+function stopAR(){
+  if (arRAF) cancelAnimationFrame(arRAF); arRAF = 0;
+  if (arStream){ for (const t of arStream.getTracks()) t.stop(); arStream = null; }
+  const fx = $("ar-fx"); fx.classList.add("hidden"); try{ fx.pause(); }catch(_){}
+  $("ar-banner").textContent = "";
+  $("btn-ar-start").classList.remove("hidden");
+}
+async function startAR(){
+  if (typeof jsQR === "undefined"){ $("ar-status").textContent = "読み取りの準備ができなかった。ネット接続を確認してね。"; return; }
+  try {
+    arStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+  } catch(e){ $("ar-status").textContent = "カメラを使えなかった。ブラウザの許可を確認してね。"; return; }
+  const cam = $("ar-cam"); cam.srcObject = arStream; await cam.play();
+  $("ar-status").textContent = "カードのQRを映してね";
+  $("btn-ar-start").classList.add("hidden");
+  const canvas = $("ar-canvas"), ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const loop = () => {
+    if (!arStream) return;
+    arRAF = requestAnimationFrame(loop);
+    if (cam.readyState < 2) return;
+    const w = Math.min(640, cam.videoWidth || 640), h = Math.round(w * (cam.videoHeight || 480) / (cam.videoWidth || 640));
+    canvas.width = w; canvas.height = h;
+    ctx.drawImage(cam, 0, 0, w, h);
+    if (Date.now() < arCoolUntil) return;
+    let img; try { img = ctx.getImageData(0, 0, w, h); } catch(e){ return; }
+    const found = jsQR(img.data, w, h, { inversionAttempts: "attemptBoth" });
+    if (found && found.data){
+      const id = parseCardId(found.data);
+      if (id) playFX(id);
+    }
+  };
+  loop();
+}
+function playFX(id){
+  const [file, name] = AR_FX[id];
+  const fx = $("ar-fx");
+  fx.src = AR_BASE + file;
+  fx.classList.remove("hidden");
+  $("ar-banner").textContent = name;
+  fx.currentTime = 0;
+  fx.play().catch(()=>{});
+  arCoolUntil = Date.now() + 2600;
+  $("ar-status").textContent = name + " のエフェクト中…";
+  setTimeout(() => { if (Date.now() >= arCoolUntil - 100) $("ar-status").textContent = "カードのQRを映してね"; }, 2700);
+}
+
+/* ---------- wire up ---------- */
+window.addEventListener("DOMContentLoaded", () => {
+  renderColorPicker();
+  $("btn-create").onclick = startHost;
+  $("btn-join").onclick = startGuest;
+  $("btn-local").onclick = startLocal;
+  $("btn-leave").onclick = () => location.reload();
+  $("btn-start").onclick = hostStartGame;
+  $("btn-end-game").onclick = () => { if (mode === "host") hostAct(0, { kind:"end" }); };
+  $("btn-host-input").onclick = () => { hostOverride = !hostOverride; $("btn-host-input").textContent = hostOverride ? "代わり入力：ON（めくる人の画面になる）" : "めくる人の代わりに入力する"; renderPanel(); };
+  for (const t of document.querySelectorAll(".tab")) t.onclick = () => switchView(t.dataset.view);
+  $("btn-ar-start").onclick = startAR;
+  $("btn-settle-ok").onclick = () => {
+    sendAct({ kind:"settle", tenbinOwners: [...settleTenbin] });
+    $("settle-bg").classList.add("hidden");
+    selCard = null; selOwner = null;
+    if (mode !== "guest") renderGame();
+  };
+  $("btn-settle-cancel").onclick = () => $("settle-bg").classList.add("hidden");
+  $("btn-result-close").onclick = () => location.reload();
+});
+</script>
+</body>
+</html>
