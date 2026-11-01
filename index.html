@@ -55,11 +55,13 @@
   .turn-banner b{color:var(--gold)}
   /* card input */
   .card-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:8px}
-  .card-btn{display:flex; align-items:center; gap:9px; background:rgba(255,255,255,.05); color:var(--ink);
+  .card-btn{position:relative; display:flex; align-items:center; gap:9px; background:rgba(255,255,255,.05); color:var(--ink);
     border:1px solid rgba(243,233,210,.3); border-radius:10px; padding:9px 10px; font-family:inherit; cursor:pointer; text-align:left}
   .card-btn.sel{border-color:var(--gold); background:rgba(217,180,92,.14)}
   .card-btn .ic{font-size:24px; flex:none}
-  .card-btn img{width:40px; height:56px; object-fit:cover; border-radius:4px; flex:none}
+  .card-btn img{width:46px; height:64px; object-fit:cover; border-radius:4px; flex:none}
+  .card-btn .zoom{position:absolute; top:4px; right:5px; font-size:12px; background:rgba(6,24,29,.75);
+    border:1px solid rgba(243,233,210,.35); border-radius:999px; padding:2px 7px; color:var(--cream)}
   .card-btn .nm{font-size:16px; color:var(--cream)}
   .card-btn .tx{font-size:10.5px; color:var(--dim); line-height:1.35}
   .owner-chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px}
@@ -164,6 +166,10 @@
         <h3 style="margin:0 0 6px; color:var(--gold); font-size:14px">ホスト用</h3>
         <button class="btn sub" id="btn-host-input" style="margin:4px 0">めくる人の代わりに入力する</button>
       </div>
+      <div class="panel">
+        <h3 style="margin:0 0 6px; color:var(--gold); font-size:14px">カード一覧 <span class="mini">タップで大きく見られる（全員OK）</span></h3>
+        <div class="card-grid" id="card-gallery"></div>
+      </div>
     </div>
 
     <div id="view-log" class="hidden">
@@ -197,6 +203,16 @@
   </div>
 </div>
 
+<!-- card viewer (everyone can open) -->
+<div id="card-viewer" class="modal-bg hidden">
+  <div style="width:100%; text-align:center; padding:18px">
+    <img id="viewer-img" alt="" style="max-width:min(88vw,340px); max-height:70vh; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,.55)">
+    <p id="viewer-name" style="font-size:19px; color:var(--cream); margin:12px 0 2px"></p>
+    <p id="viewer-text" class="mini" style="margin:0 0 12px"></p>
+    <button class="btn" id="btn-viewer-close" style="max-width:280px; margin:0 auto">閉じる</button>
+  </div>
+</div>
+
 <!-- result overlay -->
 <div id="result-bg" class="modal-bg hidden">
   <div class="modal">
@@ -222,25 +238,25 @@
 /* めくったカードは必ず誰かの置いたカードなので、入力では全カードで持ち主を選ぶ。
    効果が持ち主を使わないカードでは、computeFlip 側で owner を無視する。 */
 const CARD_DEFS = {
-  maseki:    { name:"魔石",   icon:"🔷", text:"めくった人 +3",            art:"" },
-  bousou:    { name:"暴走",   icon:"🔥", text:"めくった人 +1、めくり終了", art:"" },
-  akugi:     { name:"悪戯",   icon:"🦊", text:"めくった人は持ち主に2P渡す", art:"" },
-  shukufuku: { name:"祝福",   icon:"🕊️", text:"1位が全員に1Pずつ渡す",     art:"" },
-  shuseki:   { name:"主席",   icon:"🦅", text:"持ち主からもらう（持ち主が1位なら3P、ちがうなら1P）", art:"" },
-  tsukaima:  { name:"使い魔", icon:"🐈‍⬛", text:"めくった人と持ち主が +2ずつ", art:"" },
-  kinjutsu:  { name:"禁術",   icon:"🐉", text:"最後に発動。そのターンまだ増えてなければ+4、増えてたら-1", art:"" },
-  tenbin:    { name:"天秤",   icon:"⚖️", text:"持ち主から2Pもらう",         art:"" },
-  kago:      { name:"加護",   icon:"🦌", text:"最下位 +2（同率なら全員+1）", art:"" },
-  yakusai:   { name:"厄災",   icon:"🐦‍⬛", text:"めくった人は全員に1Pずつ渡す", art:"" },
+  maseki:    { name:"魔石",   icon:"🔷", text:"めくった人 +3",            art:"cards/maseki.webp" },
+  bousou:    { name:"暴走",   icon:"🔥", text:"めくった人 +1、めくり終了", art:"cards/bousou.webp" },
+  akugi:     { name:"悪戯",   icon:"🦊", text:"めくった人は持ち主に2P渡す", art:"cards/akugi.webp" },
+  shukufuku: { name:"祝福",   icon:"🕊️", text:"1位が全員に1Pずつ渡す",     art:"cards/shukufuku.webp" },
+  shuseki:   { name:"主席",   icon:"🦅", text:"持ち主からもらう（持ち主が1位なら3P、ちがうなら1P）", art:"cards/shuseki.webp" },
+  tsukaima:  { name:"使い魔", icon:"🐈‍⬛", text:"めくった人と持ち主が +2ずつ", art:"cards/tsukaima.webp" },
+  kinjutsu:  { name:"禁術",   icon:"🐉", text:"最後に発動。そのターンまだ増えてなければ+4、増えてたら-1", art:"cards/kinjutsu.webp" },
+  tenbin:    { name:"天秤",   icon:"⚖️", text:"持ち主から2Pもらう",         art:"cards/tenbin.webp" },
+  kago:      { name:"加護",   icon:"🦌", text:"最下位 +2（同率なら全員+1）", art:"cards/kago.webp" },
+  yakusai:   { name:"厄災",   icon:"🐦‍⬛", text:"めくった人は全員に1Pずつ渡す", art:"cards/yakusai.webp" },
 };
 const CARD_ORDER = ["maseki","bousou","akugi","shukufuku","shuseki","tsukaima","kinjutsu","tenbin","kago","yakusai"];
 const PLAYER_COLORS = [
-  { key:"aka",     name:"あか",     hex:"#ef6461" },
-  { key:"ao",      name:"あお",     hex:"#5b8def" },
-  { key:"midori",  name:"みどり",   hex:"#58b368" },
-  { key:"kiiro",   name:"きいろ",   hex:"#e3b505" },
-  { key:"murasaki",name:"むらさき", hex:"#9b7ede" },
-  { key:"shiro",   name:"しろ",     hex:"#e8e4da" },
+  { key:"aka",     name:"あか",     hex:"#7f4b47" },
+  { key:"ao",      name:"あお",     hex:"#82a8d9" },
+  { key:"midori",  name:"みどり",   hex:"#586760" },
+  { key:"kiiro",   name:"クリーム", hex:"#dcd6d2" },
+  { key:"murasaki",name:"むらさき", hex:"#8584b0" },
+  { key:"shiro",   name:"ピンク",   hex:"#cbb3bf" },
 ];
 
 function newScoreState(players){ /* players: [{name,color}]（並び順＝めくり順） */
@@ -360,7 +376,7 @@ function standings(st){
 <script>
 /* ===== UI / ネットワーク / AR ===== */
 const $ = id => document.getElementById(id);
-const APP_VOL = "Vol.4";
+const APP_VOL = "Vol.5";
 const NET_PREFIX = "spellia-score-v1-";
 const NET_OPTS = { config: { iceServers: [
   { urls: "stun:stun.l.google.com:19302" },
@@ -643,8 +659,29 @@ function renderGame(flash){
   } else th.innerHTML = "";
   renderPanel();
   renderLog();
+  renderGallery();
   $("host-tools").classList.toggle("hidden", mode !== "host" || st.over);
   if (st.over) showResult();
+}
+
+/* ---------- card gallery + viewer (everyone) ---------- */
+function renderGallery(){
+  const el = $("card-gallery");
+  if (!el) return;
+  el.innerHTML = CARD_ORDER.map(k => {
+    const d = CARD_DEFS[k];
+    const art = d.art ? `<img src="${d.art}" alt="">` : `<span class="ic">${d.icon}</span>`;
+    return `<button type="button" class="card-btn" data-view="${k}">${art}<span><span class="nm">${d.name}</span><br><span class="tx">${d.text}</span></span></button>`;
+  }).join("");
+  for (const b of el.querySelectorAll("[data-view]")) b.onclick = () => openCardViewer(b.dataset.view);
+}
+function openCardViewer(k){
+  const d = CARD_DEFS[k];
+  if (!d || !d.art) return;
+  $("viewer-img").src = d.art;
+  $("viewer-name").textContent = d.name;
+  $("viewer-text").textContent = d.text;
+  $("card-viewer").classList.remove("hidden");
 }
 function renderPanel(){
   const el = $("flipper-panel");
@@ -666,7 +703,7 @@ function renderPanel(){
     h += `<div class="card-grid">` + CARD_ORDER.map(k => {
       const d = CARD_DEFS[k];
       const art = d.art ? `<img src="${d.art}" alt="">` : `<span class="ic">${d.icon}</span>`;
-      return `<button type="button" class="card-btn ${selCard===k?"sel":""}" data-card="${k}">${art}<span><span class="nm">${d.name}</span><br><span class="tx">${d.text}</span></span></button>`;
+      return `<button type="button" class="card-btn ${selCard===k?"sel":""}" data-card="${k}">${art}<span><span class="nm">${d.name}</span><br><span class="tx">${d.text}</span></span><span class="zoom" data-zoom="${k}">🔍</span></button>`;
     }).join("") + `</div>`;
     if (selCard){
       const flipped = flippedOwners(st);
@@ -693,6 +730,7 @@ function renderPanel(){
         `</div></details></div>`;
   el.innerHTML = h;
   for (const b of el.querySelectorAll(".card-btn")) b.onclick = () => { selCard = b.dataset.card; selOwner = null; renderPanel(); };
+  for (const z of el.querySelectorAll("[data-zoom]")) z.onclick = (ev) => { ev.stopPropagation(); openCardViewer(z.dataset.zoom); };
   for (const b of el.querySelectorAll(".owner-chip")) b.onclick = () => { selOwner = Number(b.dataset.owner); renderPanel(); };
   const ok = $("btn-flip-ok");
   if (ok) ok.onclick = () => { sendAct({ kind:"flip", card: selCard, owner: selOwner }); selCard = null; selOwner = null; if (mode !== "guest") renderGame(); };
@@ -894,6 +932,8 @@ window.addEventListener("DOMContentLoaded", () => {
   };
   $("btn-settle-cancel").onclick = () => $("settle-bg").classList.add("hidden");
   $("btn-result-close").onclick = () => location.reload();
+  $("btn-viewer-close").onclick = () => $("card-viewer").classList.add("hidden");
+  $("card-viewer").addEventListener("click", (ev) => { if (ev.target === $("card-viewer")) $("card-viewer").classList.add("hidden"); });
   $("btn-detail-back").onclick = () => { detailPid = null; showResult(); };
 });
 </script>
