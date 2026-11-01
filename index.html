@@ -201,10 +201,18 @@
 <div id="result-bg" class="modal-bg hidden">
   <div class="modal">
     <h3 style="margin:0 0 10px; color:var(--gold); letter-spacing:.14em; text-align:center">✦ 結果発表 ✦</h3>
-    <div id="result-winner" style="text-align:center; font-size:21px; color:var(--cream); margin-bottom:12px; line-height:1.5"></div>
-    <div id="result-list"></div>
-    <div id="result-stats"></div>
-    <button class="btn" id="btn-result-close" style="margin-top:14px">タイトルへ戻る</button>
+    <div id="result-main">
+      <div id="result-winner" style="text-align:center; font-size:21px; color:var(--cream); margin-bottom:12px; line-height:1.5"></div>
+      <div id="result-list"></div>
+      <p class="mini" style="text-align:center">人をタップすると、その人のターンごとの選択が見られるよ</p>
+      <div id="result-stats"></div>
+      <button class="btn" id="btn-result-close" style="margin-top:14px">タイトルへ戻る</button>
+    </div>
+    <div id="result-detail" class="hidden">
+      <button class="btn sub" id="btn-detail-back" style="margin:0 0 10px; width:auto; padding:8px 18px">← もどる</button>
+      <div id="detail-title" style="font-size:18px; color:var(--cream); margin-bottom:8px"></div>
+      <div id="detail-list"></div>
+    </div>
   </div>
 </div>
 
@@ -245,6 +253,7 @@ function newScoreState(players){ /* players: [{name,color}]（並び順＝めく
     gained: false, pendingKinjutsu: 0, canFlip: true,
     turnFlips: [],   /* このターンにめくった {card, owner} の並び（ターンが終わると消える。ログには残さない） */
     stats: { byOwner: {}, byCard: {} },   /* 試合全体のめくり集計。終了時にだけ公開する */
+    history: [],   /* ターンごとの選択履歴 {turn, flipper, flips, tenbinOwners}。終了時にだけ公開する */
     turnChanges: {}, log: [], over: false, seq: 0,
   };
 }
@@ -322,6 +331,8 @@ function settleTurn(st, tenbinOwners){
   const { deltas } = computeSettle(st, tenbinOwners);
   _applyDeltas(st, deltas);
   st.log.push({ turn: st.turn, flipper: st.flipper, changes: { ...st.turnChanges } });
+  st.history.push({ turn: st.turn, flipper: st.flipper,
+    flips: st.turnFlips.map(f => ({ card: f.card, owner: f.owner })), tenbinOwners: [...tenbinOwners] });
   st.turnChanges = {}; st.turnFlips = []; st.pendingKinjutsu = 0; st.gained = false; st.canFlip = true;
   if (st.turn >= st.totalTurns){ st.over = true; }   /* 全員の手札がなくなったら自動で終了 */
   else { st.flipper = (st.flipper + 1) % st.players.length; st.turn++; }
@@ -349,7 +360,7 @@ function standings(st){
 <script>
 /* ===== UI / ネットワーク / AR ===== */
 const $ = id => document.getElementById(id);
-const APP_VOL = "Vol.3";
+const APP_VOL = "Vol.4";
 const NET_PREFIX = "spellia-score-v1-";
 const NET_OPTS = { config: { iceServers: [
   { urls: "stun:stun.l.google.com:19302" },
@@ -476,7 +487,7 @@ function snapshot(){
   return { players: st.players, turn: st.turn, totalTurns: st.totalTurns, flipper: st.flipper, gained: st.gained,
     pendingKinjutsu: st.pendingKinjutsu, canFlip: st.canFlip, turnChanges: st.turnChanges,
     turnFlips: st.turnFlips, log: st.log, over: st.over, seq: st.seq,
-    ...(st.over ? { stats: st.stats } : {}) };
+    ...(st.over ? { stats: st.stats, history: st.history } : {}) };
 }
 function broadcastState(flash){
   const data = { t:"state", snap: snapshot(), flash: flash || {} };
@@ -729,6 +740,28 @@ function renderSettle(){
 }
 
 /* ---------- result ---------- */
+let detailPid = null;
+function renderDetail(pid){
+  const p = st.players[pid];
+  $("detail-title").innerHTML = `<span style="color:${colorOf(p.color).hex}">●</span> ${esc(p.name)} の選択（ターンごと）`;
+  const logByTurn = {};
+  for (const e of st.log) logByTurn[e.turn] = e.changes;
+  $("detail-list").innerHTML = (st.history || []).map(h => {
+    const d = (logByTurn[h.turn] || {})[pid];
+    const dStr = d ? `<span class="${d>0?"plus":"minus"}">${fmtDelta(d)}</span>` : `<span style="color:var(--dim)">変動なし</span>`;
+    if (h.flipper !== pid)
+      return `<div class="log-turn"><span class="lt">ターン ${h.turn}</span>　<span class="lc">${dStr}</span></div>`;
+    const flips = h.flips.length
+      ? h.flips.map(f => `${CARD_DEFS[f.card] ? CARD_DEFS[f.card].name : f.card}（${esc(st.players[f.owner] ? st.players[f.owner].name : "?")}）`).join(" → ")
+      : "めくらなかった";
+    const tb = h.tenbinOwners && h.tenbinOwners.length
+      ? h.tenbinOwners.map(o => esc(st.players[o].name)).join("、")
+      : "なし";
+    return `<div class="log-turn"><span class="lt">ターン ${h.turn}｜めくり番</span><br>
+      <span class="lc">${flips}</span><br>
+      <span class="mini">天秤の申告：${tb}／ このターンの変動：</span>${dStr}</div>`;
+  }).join("") || `<p class="mini">記録がありません。</p>`;
+}
 function showResult(){
   const sorted = [...st.players].sort((a, b) => b.score - a.score);
   const top = sorted[0].score;
@@ -737,11 +770,13 @@ function showResult(){
   let rank = 0, prev = null;
   $("result-list").innerHTML = sorted.map((p, i) => {
     if (p.score !== prev){ rank = i + 1; prev = p.score; }
-    return `<div class="sb-row"><span style="min-width:34px; color:var(--gold)">${rank}位</span>
+    return `<div class="sb-row" data-player="${p.id}" style="cursor:pointer"><span style="min-width:34px; color:var(--gold)">${rank}位</span>
       <span class="dot" style="background:${colorOf(p.color).hex}"></span>
       <span class="sb-name">${rank===1?"👑 ":""}${esc(p.name)}</span>
       <span class="sb-score">${p.score}</span></div>`;
   }).join("");
+  for (const row of $("result-list").querySelectorAll("[data-player]"))
+    row.onclick = () => { detailPid = Number(row.dataset.player); showResult(); };
   /* めくりの記録（試合全体の集計。終了時だけここに出る） */
   const statsEl = $("result-stats");
   if (st.stats && st.stats.byOwner){
@@ -763,6 +798,10 @@ function showResult(){
     if (ft.length) h += `<p class="mini" style="margin-top:8px">一番めくられたのは ${esc(st.players[ft[0][0]].name)}（合計 ${ft[0][1]}枚）</p>`;
     statsEl.innerHTML = h;
   } else statsEl.innerHTML = "";
+  const hasDetail = detailPid !== null && st.history && st.players[detailPid];
+  $("result-main").classList.toggle("hidden", !!hasDetail);
+  $("result-detail").classList.toggle("hidden", !hasDetail);
+  if (hasDetail) renderDetail(detailPid);
   $("result-bg").classList.remove("hidden");
 }
 
@@ -855,6 +894,7 @@ window.addEventListener("DOMContentLoaded", () => {
   };
   $("btn-settle-cancel").onclick = () => $("settle-bg").classList.add("hidden");
   $("btn-result-close").onclick = () => location.reload();
+  $("btn-detail-back").onclick = () => { detailPid = null; showResult(); };
 });
 </script>
 </body>
