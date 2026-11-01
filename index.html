@@ -98,6 +98,7 @@
   <section id="scr-title">
     <p class="logo">SPELLIA<span class="star">✦</span></p>
     <p class="subtitle">SCORE KEEPER</p>
+    <p class="mini" id="app-vol" style="text-align:center; margin-top:2px"></p>
     <div class="panel">
       <h3 style="margin:0 0 8px; color:var(--gold); font-size:15px; letter-spacing:.1em">みんなで点数計算</h3>
       <p class="mini">本物のカードで遊びながら、点数だけをスマホで計算する道具だよ。全員の点数がリアルタイムで見えて、ターンごとの記録も残る。ARもこのページの中で楽しめるよ。</p>
@@ -122,7 +123,8 @@
           5. 「禁術」は最後にまとめて発動。「天秤」がめくられずに残ったら、ターンの終わりに持ち主を選んでね<br>
           6. ログにはターンごとの点数の動きだけが残る（カードの名前は残らないよ）。今のターンの間だけは、めくったカードの一覧が点数の上に見える<br>
           7. 置くカードは1人1枚だから、同じ人のカードは1ターンに1枚まで。めくれるのは自分以外の人数分まで<br>
-          7. ARタブでは、タブを閉じずにカードのARエフェクトが見られる
+          8. ARタブでは、タブを閉じずにカードのARエフェクトが見られる<br>
+          9. 対戦を終わらせると、勝者と「誰が誰のカードを何枚めくったか」の記録が全員に見られる（試合中は見られないよ）
         </div>
       </details>
     </div>
@@ -158,6 +160,9 @@
       <div id="turn-history"></div>
       <div id="scoreboard"></div>
       <div id="flipper-panel"></div>
+      <div class="panel hidden" id="local-tools">
+        <button class="btn danger" id="btn-end-local" style="margin:0">対戦を終わらせる（結果発表）</button>
+      </div>
       <div class="panel hidden" id="host-tools">
         <h3 style="margin:0 0 6px; color:var(--gold); font-size:14px">ホスト用</h3>
         <button class="btn sub" id="btn-host-input" style="margin:4px 0">めくる人の代わりに入力する</button>
@@ -200,7 +205,9 @@
 <div id="result-bg" class="modal-bg hidden">
   <div class="modal">
     <h3 style="margin:0 0 10px; color:var(--gold); letter-spacing:.14em; text-align:center">✦ 結果発表 ✦</h3>
+    <div id="result-winner" style="text-align:center; font-size:21px; color:var(--cream); margin-bottom:12px; line-height:1.5"></div>
     <div id="result-list"></div>
+    <div id="result-stats"></div>
     <button class="btn" id="btn-result-close" style="margin-top:14px">タイトルへ戻る</button>
   </div>
 </div>
@@ -238,6 +245,7 @@ function newScoreState(players){ /* players: [{name,color}] */
     turn: 1, flipper: 0,
     gained: false, pendingKinjutsu: 0, canFlip: true,
     turnFlips: [],   /* このターンにめくった {card, owner} の並び（ターンが終わると消える。ログには残さない） */
+    stats: { byOwner: {}, byCard: {} },   /* 試合全体のめくり集計。終了時にだけ公開する */
     turnChanges: {}, log: [], over: false, seq: 0,
   };
 }
@@ -276,6 +284,12 @@ function computeFlip(st, card, owner){
 /* めくり1回を確定する */
 function applyFlip(st, card, owner){
   st.turnFlips.push({ card, owner });
+  if (typeof owner === "number"){
+    const so = st.stats.byOwner[st.flipper] || (st.stats.byOwner[st.flipper] = {});
+    so[owner] = (so[owner] || 0) + 1;
+    const sc = st.stats.byCard[st.flipper] || (st.stats.byCard[st.flipper] = {});
+    sc[card] = (sc[card] || 0) + 1;
+  }
   if (card === "kinjutsu"){ st.pendingKinjutsu++; st.seq++; return { pending:true, deltas:{} }; }
   const { deltas } = computeFlip(st, card, owner);
   const before = st.players[st.flipper].score;
@@ -335,6 +349,7 @@ function standings(st){
 <script>
 /* ===== UI / ネットワーク / AR ===== */
 const $ = id => document.getElementById(id);
+const APP_VOL = "Vol.2";
 const NET_PREFIX = "spellia-score-v1-";
 const NET_OPTS = { config: { iceServers: [
   { urls: "stun:stun.l.google.com:19302" },
@@ -464,7 +479,8 @@ function hostAct(seat, msg){
 function snapshot(){
   return { players: st.players, turn: st.turn, flipper: st.flipper, gained: st.gained,
     pendingKinjutsu: st.pendingKinjutsu, canFlip: st.canFlip, turnChanges: st.turnChanges,
-    turnFlips: st.turnFlips, log: st.log, over: st.over, seq: st.seq };
+    turnFlips: st.turnFlips, log: st.log, over: st.over, seq: st.seq,
+    ...(st.over ? { stats: st.stats } : {}) };
 }
 function broadcastState(flash){
   const data = { t:"state", snap: snapshot(), flash: flash || {} };
@@ -557,7 +573,7 @@ function deltaHTML(stt, deltas){
 }
 function renderGame(flash){
   if (!st) return;
-  $("game-room").textContent = mode === "local" ? "お試しモード" : ("部屋 " + roomCode);
+  $("game-room").textContent = (mode === "local" ? "お試しモード" : ("部屋 " + roomCode)) + "｜" + APP_VOL;
   const sd = standings(st);
   const F = st.players[st.flipper];
   $("turn-banner").innerHTML =
@@ -599,6 +615,7 @@ function renderGame(flash){
   renderPanel();
   renderLog();
   $("host-tools").classList.toggle("hidden", mode !== "host" || st.over);
+  $("local-tools").classList.toggle("hidden", mode !== "local" || st.over);
   if (st.over) showResult();
 }
 function renderPanel(){
@@ -697,6 +714,9 @@ function renderSettle(){
 /* ---------- result ---------- */
 function showResult(){
   const sorted = [...st.players].sort((a, b) => b.score - a.score);
+  const top = sorted[0].score;
+  const winners = sorted.filter(p => p.score === top);
+  $("result-winner").innerHTML = "🏆 " + winners.map(p => `<span style="color:${colorOf(p.color).hex}">●</span>${esc(p.name)}`).join(" と ") + " の勝ち！";
   let rank = 0, prev = null;
   $("result-list").innerHTML = sorted.map((p, i) => {
     if (p.score !== prev){ rank = i + 1; prev = p.score; }
@@ -705,6 +725,27 @@ function showResult(){
       <span class="sb-name">${rank===1?"👑 ":""}${esc(p.name)}</span>
       <span class="sb-score">${p.score}</span></div>`;
   }).join("");
+  /* めくりの記録（試合全体の集計。終了時だけここに出る） */
+  const statsEl = $("result-stats");
+  if (st.stats && st.stats.byOwner){
+    const byOwner = st.stats.byOwner, byCard = st.stats.byCard || {};
+    const flippedTotal = {};   /* 持ち主ごとに「何枚めくられたか」 */
+    let h = `<h3 style="margin:16px 0 6px; color:var(--gold); font-size:15px; letter-spacing:.08em">めくりの記録</h3>`;
+    for (const p of st.players){
+      const mine = byOwner[p.id] || {};
+      const total = Object.values(mine).reduce((a, b) => a + b, 0);
+      if (!total){ h += `<p class="mini" style="margin:3px 0"><span style="color:${colorOf(p.color).hex}">●</span> ${esc(p.name)}：めくり 0枚</p>`; continue; }
+      const owners = Object.keys(mine).map(k => [Number(k), mine[k]]).sort((a, b) => b[1] - a[1]);
+      for (const [oid, c] of owners) flippedTotal[oid] = (flippedTotal[oid] || 0) + c;
+      const ownerStr = owners.map(([oid, c]) => `${esc(st.players[oid].name)} ×${c}`).join("、");
+      const cards = Object.keys(byCard[p.id] || {}).map(k => [k, byCard[p.id][k]]).sort((a, b) => b[1] - a[1]);
+      const cardStr = cards.length ? `／ よくめくったカード：${CARD_DEFS[cards[0][0]].name} ×${cards[0][1]}` : "";
+      h += `<p style="font-size:14px; margin:3px 0; line-height:1.7"><span style="color:${colorOf(p.color).hex}">●</span> ${esc(p.name)}：合計 ${total}枚（${ownerStr}）${cardStr}</p>`;
+    }
+    const ft = Object.keys(flippedTotal).map(k => [Number(k), flippedTotal[k]]).sort((a, b) => b[1] - a[1]);
+    if (ft.length) h += `<p class="mini" style="margin-top:8px">一番めくられたのは ${esc(st.players[ft[0][0]].name)}（合計 ${ft[0][1]}枚）</p>`;
+    statsEl.innerHTML = h;
+  } else statsEl.innerHTML = "";
   $("result-bg").classList.remove("hidden");
 }
 
@@ -779,6 +820,7 @@ function playFX(id){
 
 /* ---------- wire up ---------- */
 window.addEventListener("DOMContentLoaded", () => {
+  $("app-vol").textContent = APP_VOL;
   renderColorPicker();
   $("btn-create").onclick = startHost;
   $("btn-join").onclick = startGuest;
@@ -786,6 +828,7 @@ window.addEventListener("DOMContentLoaded", () => {
   $("btn-leave").onclick = () => location.reload();
   $("btn-start").onclick = hostStartGame;
   $("btn-end-game").onclick = () => { if (mode === "host") hostAct(0, { kind:"end" }); };
+  $("btn-end-local").onclick = () => { if (mode === "local" && st){ st.over = true; st.seq++; renderGame(); } };
   $("btn-host-input").onclick = () => { hostOverride = !hostOverride; $("btn-host-input").textContent = hostOverride ? "代わり入力：ON（めくる人の画面になる）" : "めくる人の代わりに入力する"; renderPanel(); };
   for (const t of document.querySelectorAll(".tab")) t.onclick = () => switchView(t.dataset.view);
   $("btn-ar-start").onclick = startAR;
