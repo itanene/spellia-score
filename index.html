@@ -118,15 +118,24 @@
       <details>
         <summary>使い方</summary>
         <div class="rule-list">
+          <b>この道具の使い方</b><br>
           1. ホストが「部屋を作る」→ 出てきた4文字のコードをみんなに伝える<br>
-          2. みんなはコードを入れて「部屋に入る」。名前と自分の色を選んでね<br>
-          3. ロビーで、当日の座席どおり（時計回り）に↑↓で並び替えてね。一番上が最初のめくる人。ホストが対戦を始めると、その順で「めくる人」が回る<br>
-          4. めくる人は、カードをめくるたびに「めくったカード」と「持ち主」を選んで確定。点数はアプリが自動で計算して、全員の画面にその場で出る<br>
-          5. 「禁術」は最後にまとめて発動。「天秤」がめくられずに残ったら、ターンの終わりに持ち主を選んでね<br>
-          6. ログにはターンごとの点数の動きだけが残る（カードの名前は残らないよ）。今のターンの間だけは、めくったカードの一覧が点数の上に見える<br>
-          7. 置くカードは1人1枚だから、同じ人のカードは1ターンに1枚まで。めくれるのは自分以外の人数分まで<br>
+          2. みんなはコードを入れて「部屋に入る」。名前と、自分のカードの色を選んでね<br>
+          3. ロビーで、当日の座席どおり（時計回り）に↑↓で並び替える。一番上が最初の「めくる人」<br>
+          4. めくる人は、カードをめくるたびに「めくったカード」と「置いた人」を選んで確定。点数はアプリが自動で計算して、全員の画面にその場で出る<br>
+          5. 「禁術」は最後にまとめて発動。「天秤」がめくられずに残ったら、ターンの終わりに置いた人を選んでね<br>
+          6. 置くカードは1人1枚だから、同じ人のカードは1ターンに1枚まで。めくれるのは自分以外の人数分まで<br>
+          7. ログにはターンごとの点数の動きだけが残る（カードの名前は残らないよ）。今のターンの間だけ、めくったカードの一覧が点数の上に見える<br>
           8. ARタブでは、タブを閉じずにカードのARエフェクトが見られる<br>
-          9. 試合は、全員の手札がなくなるターン（人数で決まっています）で自動で終わり、勝者と「誰が誰のカードを何枚めくったか」の記録が全員に見られる（試合中は見られないよ）
+          9. 試合は、全員のカードがなくなるターン（人数で決まっています）で自動で終わる。終わったら、勝者と「誰が誰のカードを何枚めくったか」の記録が全員に見られる（試合中は見られないよ）<br>
+          <br>
+          <b>ゲームのルール（簡単なまとめ）</b><br>
+          ・みんなでカードを「裏向きに置く人」と「めくる人」に分かれて遊ぶ、点数取りゲームです<br>
+          ・めくる人以外は、手札から1枚だけ選んで裏向きに置きます。めくる人は置きません（時計回りに交代します）<br>
+          ・めくる人は、置かれたカードを1枚ずつめくっていきます。最初の1枚は必ずめくって、そのあとは好きなところで止められます<br>
+          ・良いカードなら点数が増え、悪いカードなら減ります。全員0ポイントから始めて、マイナスにもなります<br>
+          ・「暴走」が出たらそのターンは終わり。「禁術」はターンの最後にまとめて発動します<br>
+          ・全員のカードがなくなった時に、一番ポイントが多い人の勝ちです
         </div>
       </details>
     </div>
@@ -238,16 +247,16 @@
 /* めくったカードは必ず誰かの置いたカードなので、入力では全カードで持ち主を選ぶ。
    効果が持ち主を使わないカードでは、computeFlip 側で owner を無視する。 */
 const CARD_DEFS = {
-  maseki:    { name:"魔石",   icon:"🔷", text:"めくった人 +3",            art:"cards/maseki.webp" },
-  bousou:    { name:"暴走",   icon:"🔥", text:"めくった人 +1、めくり終了", art:"cards/bousou.webp" },
-  akugi:     { name:"悪戯",   icon:"🦊", text:"めくった人は持ち主に2P渡す", art:"cards/akugi.webp" },
-  shukufuku: { name:"祝福",   icon:"🕊️", text:"1位が全員に1Pずつ渡す",     art:"cards/shukufuku.webp" },
-  shuseki:   { name:"主席",   icon:"🦅", text:"持ち主からもらう（持ち主が1位なら3P、ちがうなら1P）", art:"cards/shuseki.webp" },
-  tsukaima:  { name:"使い魔", icon:"🐈‍⬛", text:"めくった人と持ち主が +2ずつ", art:"cards/tsukaima.webp" },
-  kinjutsu:  { name:"禁術",   icon:"🐉", text:"最後に発動。そのターンまだ増えてなければ+4、増えてたら-1", art:"cards/kinjutsu.webp" },
-  tenbin:    { name:"天秤",   icon:"⚖️", text:"持ち主から2Pもらう",         art:"cards/tenbin.webp" },
-  kago:      { name:"加護",   icon:"🦌", text:"最下位 +2（同率なら全員+1）", art:"cards/kago.webp" },
-  yakusai:   { name:"厄災",   icon:"🐦‍⬛", text:"めくった人は全員に1Pずつ渡す", art:"cards/yakusai.webp" },
+  maseki:    { name:"魔石",   icon:"🔷", text:"めくった人が3ポイントもらう",            art:"cards/maseki.webp" },
+  bousou:    { name:"暴走",   icon:"🔥", text:"めくった人が1ポイントもらう。そのターンのめくりは、ここで終わり", art:"cards/bousou.webp" },
+  akugi:     { name:"悪戯",   icon:"🦊", text:"めくった人は、置いた人に2ポイント渡す", art:"cards/akugi.webp" },
+  shukufuku: { name:"祝福",   icon:"🕊️", text:"今1位の人が、他の全員に1ポイントずつ渡す。1位が2人以上いたら、その全員が渡す",     art:"cards/shukufuku.webp" },
+  shuseki:   { name:"主席",   icon:"🦅", text:"めくった人は、置いた人からポイントをもらう。置いた人が今1位なら3ポイント、ちがうなら1ポイント", art:"cards/shuseki.webp" },
+  tsukaima:  { name:"使い魔", icon:"🐈‍⬛", text:"めくった人と置いた人が、2ポイントずつもらう", art:"cards/tsukaima.webp" },
+  kinjutsu:  { name:"禁術",   icon:"🐉", text:"ターンの最後に発動。このターン、めくった人のポイントが一度も増えていなければ+4ポイント、増えていたら−1ポイント", art:"cards/kinjutsu.webp" },
+  tenbin:    { name:"天秤",   icon:"⚖️", text:"めくった人が、置いた人から2ポイントもらう",         art:"cards/tenbin.webp" },
+  kago:      { name:"加護",   icon:"🦌", text:"今一番ポイントが少ない人が2ポイントもらう。何人かいたら、その全員が1ポイントずつもらう", art:"cards/kago.webp" },
+  yakusai:   { name:"厄災",   icon:"🐦‍⬛", text:"めくった人は、他の全員に1ポイントずつ渡す", art:"cards/yakusai.webp" },
 };
 const CARD_ORDER = ["maseki","bousou","akugi","shukufuku","shuseki","tsukaima","kinjutsu","tenbin","kago","yakusai"];
 const PLAYER_COLORS = [
@@ -376,7 +385,7 @@ function standings(st){
 <script>
 /* ===== UI / ネットワーク / AR ===== */
 const $ = id => document.getElementById(id);
-const APP_VOL = "Vol.5";
+const APP_VOL = "Vol.6";
 const NET_PREFIX = "spellia-score-v1-";
 const NET_OPTS = { config: { iceServers: [
   { urls: "stun:stun.l.google.com:19302" },
