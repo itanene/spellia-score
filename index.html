@@ -253,7 +253,7 @@ const CARD_DEFS = {
   shukufuku: { name:"祝福",   icon:"🕊️", text:"今1位の人が、他の全員に1ポイントずつ渡す。1位が2人以上いたら、その全員が渡す",     art:"cards/shukufuku.webp" },
   shuseki:   { name:"主席",   icon:"🦅", text:"めくった人は、置いた人からポイントをもらう。置いた人が今1位なら3ポイント、ちがうなら1ポイント", art:"cards/shuseki.webp" },
   tsukaima:  { name:"使い魔", icon:"🐈‍⬛", text:"めくった人と置いた人が、2ポイントずつもらう", art:"cards/tsukaima.webp" },
-  kinjutsu:  { name:"禁術",   icon:"🐉", text:"ターンの最後に発動。このターン、めくった人のポイントが一度も増えていなければ+4ポイント、増えていたら−1ポイント", art:"cards/kinjutsu.webp" },
+  kinjutsu:  { name:"禁術",   icon:"🐉", text:"ターンの最後に発動。このターン、めくった人のポイントが一度も増えていなければ+4ポイント、増えていたら−2ポイント", art:"cards/kinjutsu.webp" },
   tenbin:    { name:"天秤",   icon:"⚖️", text:"めくった人が、置いた人から2ポイントもらう",         art:"cards/tenbin.webp" },
   kago:      { name:"加護",   icon:"🦌", text:"今一番ポイントが少ない人が2ポイントもらう。何人かいたら、その全員が1ポイントずつもらう", art:"cards/kago.webp" },
   yakusai:   { name:"厄災",   icon:"🐦‍⬛", text:"めくった人は、他の全員に1ポイントずつ渡す", art:"cards/yakusai.webp" },
@@ -346,7 +346,7 @@ function flippedOwners(st){ return new Set(st.turnFlips.map(f => f.owner)); }
 function computeSettle(st, tenbinOwners){
   const F = st.flipper, deltas = {};
   const add = (i,d)=>{ deltas[i] = (deltas[i]||0) + d; };
-  const kinjutsuDelta = st.pendingKinjutsu ? (st.gained ? -1 : 4) * st.pendingKinjutsu : 0;
+  const kinjutsuDelta = st.pendingKinjutsu ? (st.gained ? -2 : 4) * st.pendingKinjutsu : 0;
   if (kinjutsuDelta) add(F, kinjutsuDelta);
   for (const o of tenbinOwners)
     for (const q of st.players) if (q.id !== o){ add(q.id,-1); add(o, 1); }
@@ -385,7 +385,7 @@ function standings(st){
 <script>
 /* ===== UI / ネットワーク / AR ===== */
 const $ = id => document.getElementById(id);
-const APP_VOL = "Vol.6";
+const APP_VOL = "Vol.7";
 const NET_PREFIX = "spellia-score-v1-";
 const NET_OPTS = { config: { iceServers: [
   { urls: "stun:stun.l.google.com:19302" },
@@ -702,7 +702,7 @@ function renderPanel(){
   }
   if (selOwner !== null && flippedOwners(st).has(selOwner)) selOwner = null;
   let h = `<div class="panel"><h3 style="margin:0 0 4px; color:var(--gold); font-size:15px">めくったカードを選んでね</h3>`;
-  if (st.gained) h += `<p class="mini">このターン、あなたはもうポイントが増えています（禁術は −1 になります）。</p>`;
+  if (st.gained) h += `<p class="mini">このターン、あなたはもうポイントが増えています（禁術は −2 になります）。</p>`;
   const prob = flipProblem(st, null);
   if (prob === "stop"){
     h += `<p class="mini">暴走で、このターンのめくりは終わりです。</p>`;
@@ -769,7 +769,7 @@ function openSettle(){
 function renderSettle(){
   const F = st.players[st.flipper];
   $("settle-kinjutsu").innerHTML = st.pendingKinjutsu
-    ? `<p style="font-size:15px; line-height:1.7">禁術 ×${st.pendingKinjutsu}：${esc(F.name)} はこのターン ${st.gained ? "もうポイントが増えているので <b class='minus'>−1</b> ずつ" : "まだポイントが増えていないので <b class='plus'>+4</b> ずつ"} になります。</p>`
+    ? `<p style="font-size:15px; line-height:1.7">禁術 ×${st.pendingKinjutsu}：${esc(F.name)} はこのターン ${st.gained ? "もうポイントが増えているので <b class='minus'>−2</b> ずつ" : "まだポイントが増えていないので <b class='plus'>+4</b> ずつ"} になります。</p>`
     : `<p class="mini">禁術の保留はありません。</p>`;
   const tbCandidates = st.players.filter(p => p.id !== st.flipper && !flippedOwners(st).has(p.id));
   $("settle-tenbin").innerHTML = tbCandidates.length ? tbCandidates.map(p =>
